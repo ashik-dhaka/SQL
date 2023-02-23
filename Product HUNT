@@ -1,0 +1,163 @@
+SELECT  a.MOM_
+        ,a.ANALYSIS
+        ,a.venture_category1_name_en
+        ,a.venture_category2_name_en
+        ,a.venture_category3_name_en
+        ,a.venture_category4_name_en
+        ,a.venture_category5_name_en
+        ,a.venture_category6_name_en
+        ,a.deepest_category_name
+        ,a.business_area
+        ,b.venture
+        
+        
+        ,COUNT(DISTINCT b.daraz_sku) Total_Assortment
+        ,SUM(a.retail_gmv) retail_gmv
+        ,SUM(a.marketplace_gmv) marketplace_gmv
+        ,SUM(a.crossborder_gmv) crossborder_gmv
+        ,SUM(a.Organic_GMV) Organic_GMV
+        ,SUM(a.Assisted_GMV) Assisted_GMV
+        ,SUM(a.gmv_) gmv_
+        ,SUM(a.nmv_) nmv_
+        ,SUM(a.gross_Items) gross_Items
+        ,SUM(a.net_items) net_items
+        ,SUM(a.gross_orders) gross_orders
+        ,SUM(a.net_orders) net_orders
+        ,SUM(a.gross_buyers) gross_buyers
+        ,SUM(a.net_buyers) net_buyers
+        ,AVG(a.AOV) AOV
+        ,AVG(a.AIV) AIV
+        
+FROM    (
+            SELECT  venture
+                    ,TO_CHAR(fulfillment_create_date,"yyyymm") MOM_
+                    ,CASE   WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products','Topup') THEN 'DG'
+                            WHEN venture_category1_name_en IN ('TV, Audio / Video, Gaming & Wearables','Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV Audio Video Gaming & Wearables') THEN 'EL'
+                            WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                            WHEN venture_category1_name_en IN ('Health & Beauty','Groceries','Pet Supplies','Medicine','Mother & Baby') THEN 'FMCG'
+                            WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Home & Living','Charity and Donation','Furniture & Decor','Furniture & Décor','Kitchen & Dining','Tools DIY & Outdoor','Tools DIY & Outdoor','Laundry & Cleaning','Media, Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Toys & Games','Tools, DIY & Outdoor','Packaging Material','Media Music & Books') THEN 'Lifestyle'
+                            WHEN venture_category1_name_en IN ('Special Promotion','Test Product2','Test Product','Wholesale','Sample','SOF Categories','Testing Categories') THEN 'Test'
+                            ELSE 'Unknown'
+                    END AS industry_name
+                    ,daraz_sku
+                    ,business_area
+                    ,product_name
+                    ,CASE   WHEN unit_price BETWEEN '0' AND '50' THEN '0-50 BDT'
+                WHEN unit_price BETWEEN '51' AND '100' THEN '51-100 BDT'
+                WHEN unit_price BETWEEN '101' AND '150' THEN '101-150 BDT'
+                WHEN unit_price BETWEEN '151' AND '200' THEN '151-200 BDT'
+                WHEN unit_price BETWEEN '201' AND '250' THEN '201-250 BDT'
+                WHEN unit_price BETWEEN '251' AND '300' THEN '251-300 BDT'
+                WHEN unit_price BETWEEN '301' AND '350' THEN '301-350 BDT'
+                WHEN unit_price BETWEEN '351' AND '400' THEN '351-400 BDT'
+                WHEN unit_price BETWEEN '401' AND '450' THEN '401-450 BDT'
+                WHEN unit_price BETWEEN '451' AND '500' THEN '451-500 BDT'
+                WHEN unit_price BETWEEN '501' AND '550' THEN '501-550 BDT'
+                WHEN unit_price BETWEEN '551' AND '600' THEN '551-600 BDT'
+                WHEN unit_price BETWEEN '601' AND '650' THEN '601-650 BDT'
+                WHEN unit_price BETWEEN '651' AND '700' THEN '651-700 BDT'
+                WHEN unit_price BETWEEN '701' AND '750' THEN '701-750 BDT'
+                WHEN unit_price BETWEEN '751' AND '800' THEN '751-800 BDT'
+                WHEN unit_price BETWEEN '801' AND '850' THEN '801-850 BDT'
+                WHEN  unit_price BETWEEN '851' AND '900' THEN '851-900 BDT'
+                WHEN unit_price BETWEEN '901' AND '950' THEN '901-950 BDT'
+                WHEN unit_price BETWEEN '951' AND '1000' THEN '951-1000 BDT'
+                WHEN unit_price BETWEEN '1001' AND '1050' THEN '1001-1050 BDT'
+                WHEN unit_price BETWEEN '1051' AND '1100' THEN '1051-1100 BDT'
+                WHEN unit_price BETWEEN '1101' AND '1150' THEN '1101-1150 BDT'
+                WHEN unit_price BETWEEN '1151' AND '1200' THEN '1151-1200 BDT'
+                WHEN unit_price BETWEEN '1201' AND '1250' THEN '1201-1250 BDT'
+                WHEN unit_price BETWEEN '1251' AND '1300' THEN '1251-1300 BDT'
+                WHEN unit_price BETWEEN '1301' AND '1350' THEN '1301-1350 BDT'
+                WHEN unit_price BETWEEN '1351' AND '1400' THEN '1351-1400 BDT'
+                WHEN unit_price BETWEEN '1401' AND '1450' THEN '1401-1450 BDT'
+                WHEN unit_price BETWEEN '1451' AND '1500' THEN '1451-1500 BDT'
+                WHEN unit_price BETWEEN '1501' AND '1550' THEN '1501-1550 BDT'
+                WHEN unit_price BETWEEN '1551' AND '1600' THEN '1551-1600 BDT'
+                WHEN unit_price BETWEEN '1601' AND '1650' THEN '1601-1650 BDT'
+                WHEN unit_price BETWEEN '1651' AND '1700' THEN '1651-1700 BDT'
+                WHEN unit_price BETWEEN '1701' AND '1750' THEN '1701-1750 BDT'
+                WHEN unit_price BETWEEN '1751' AND '1800' THEN '1751-1800 BDT'
+                WHEN unit_price BETWEEN '1801' AND '1850' THEN '1801-1850 BDT'
+                WHEN unit_price BETWEEN '1851' AND '1900' THEN '1851-1900 BDT'
+                WHEN unit_price BETWEEN '1901' AND '1950' THEN '1901-1950 BDT'
+                WHEN unit_price BETWEEN '1951' AND '2000' THEN '1951-2000 BDT'
+                ELSE 'Above 2000 BDT'
+        END AS ANALYSIS
+                    
+                    ,COALESCE(venture_category1_name_en,"-") AS venture_category1_name_en
+                    ,COALESCE(venture_category2_name_en,"-") AS venture_category2_name_en
+                    ,COALESCE(venture_category3_name_en,"-") AS venture_category3_name_en
+                    ,COALESCE(venture_category4_name_en,"-") AS venture_category4_name_en
+                    ,COALESCE(venture_category5_name_en,"-") AS venture_category5_name_en
+                    ,COALESCE(venture_category6_name_en,"-") AS venture_category6_name_en
+                    ,COALESCE(deepest_category_name,"-") AS deepest_category_name
+                    ,SUM(CASE WHEN business_area = 'Retail' THEN (actual_gmv * exchange_rate) END) AS retail_gmv
+                    ,SUM(CASE WHEN business_area = 'Marketplace' THEN (actual_gmv * exchange_rate) END) AS marketplace_gmv
+                    ,SUM(CASE WHEN business_area = 'Crossborder' THEN (actual_gmv * exchange_rate) END) AS crossborder_gmv
+                    ,SUM(IF(discount_amount_by_platform = 0,actual_gmv * exchange_rate,NULL)) AS Organic_GMV
+                    ,SUM(IF(discount_amount_by_platform > 0,actual_gmv * exchange_rate,NULL)) AS Assisted_GMV
+                    ,SUM(actual_gmv * exchange_rate) AS gmv_
+                    ,SUM(actual_gmv * net_item * exchange_rate) AS nmv_
+                    ,COUNT(DISTINCT sales_order_item_id) AS gross_Items
+                    ,COUNT(DISTINCT CASE WHEN net_item = 1 THEN sales_order_item_id END) AS net_items
+                    ,COUNT(DISTINCT sales_order_id) AS gross_orders
+                    ,COUNT(DISTINCT CASE WHEN net_item = 1 THEN sales_order_id END) AS net_orders
+                    ,COUNT(DISTINCT buyer_id) AS gross_buyers
+                    ,COUNT(DISTINCT CASE WHEN net_item = 1 THEN buyer_id END) AS net_buyers
+                    ,SUM(actual_gmv * exchange_rate) / COUNT(DISTINCT sales_order_id) AS AOV
+                    ,SUM(actual_gmv * exchange_rate) / COUNT(DISTINCT sales_order_item_id) AS AIV
+            FROM    daraz_cdm.dwd_drz_trd_core_df
+            WHERE   ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'YYYYMMDD')
+            AND     TO_CHAR(fulfillment_create_date,"yyyymm")='202301'
+           -- AND     venture IN ('PK','BD','LK')
+
+           AND venture = 'BD'
+           and deepest_category_name in ('Rice','Sugar','Lentils','Grains','Spices')
+            AND     unit_price > 1
+            AND     is_fulfilled = 1
+            GROUP BY COALESCE(venture_category1_name_en,"-")
+                     ,COALESCE(venture_category2_name_en,"-")
+                     ,COALESCE(venture_category3_name_en,"-")
+                     ,COALESCE(venture_category4_name_en,"-")
+                     ,COALESCE(venture_category5_name_en,"-")
+                     ,COALESCE(venture_category6_name_en,"-")
+                     ,deepest_category_name
+                     ,venture
+                     ,industry_name
+                     ,venture_category1_name_en
+                     ,daraz_sku
+                     ,business_area
+                     ,MOM_
+                     ,product_name
+                     ,ANALYSIS
+                     
+        ) a
+LEFT JOIN   (
+                SELECT  DISTINCT daraz_sku
+                        ,venture_category1_name_en
+                        ,venture_category2_name_en
+                        ,venture_category3_name_en
+                        ,venture_category4_name_en
+                        ,venture_category5_name_en
+                        ,venture_category6_name_en
+                        ,venture
+                        ,product_weight
+                FROM    daraz_cdm.dim_drz_prd_sku_core
+                WHERE   ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'YYYYMMDD')
+               -- AND     venture IN ('PK','BD','LK')
+               AND venture = 'BD'
+            ) b
+ON      a.daraz_sku = b.daraz_sku
+GROUP BY a.venture_category1_name_en
+         ,a.venture_category2_name_en
+         ,a.venture_category3_name_en
+         ,a.venture_category4_name_en
+         ,a.venture_category5_name_en
+         ,a.venture_category6_name_en
+         ,a.deepest_category_name
+         ,a.business_area
+         ,a.MOM_
+         ,b.venture
+         ,a.ANALYSIS
+         
