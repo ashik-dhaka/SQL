@@ -1,0 +1,77 @@
+SELECT  'Monthly' AS Freq
+        ,MONTHS
+        ,asst_perf.venture_category1_name_en
+        ,channel
+        ,COUNT (
+            DISTINCT CASE    when (sum_is_visible>0) THEN asst_perf.product_id 
+                     END
+        ) AS Live_Assortment
+        ,COUNT (
+            DISTINCT CASE    when (impression_count>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) as impressed_prod
+        ,COUNT (
+            DISTINCT CASE    when (impression_count>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) / COUNT ( DISTINCT CASE when (sum_is_visible>0) THEN asst_perf.product_id  END ) AS Live_to_impressed_Perc
+        ,COUNT (
+            DISTINCT CASE    when (sum_pv>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) as viewed_prods
+        ,COUNT (
+            DISTINCT CASE    when (sum_pv>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) / COUNT ( DISTINCT CASE when (impression_count>0) AND (sum_is_visible>0) THEN asst_perf.product_id  END ) AS Impressed_to_Viewed_Perc
+        ,COUNT (
+            DISTINCT CASE    when (count_add_to_cart>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) as a2c_prods
+        ,COUNT (
+            DISTINCT CASE    when (count_add_to_cart>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) /COUNT ( DISTINCT CASE when (sum_pv>0) AND (sum_is_visible>0) THEN asst_perf.product_id  END ) AS Viewed_to_A2C_Perc
+        ,COUNT (
+            DISTINCT CASE    when (items_sold>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) as selling_assortment
+        ,COUNT (
+            DISTINCT CASE    when (items_sold>0) AND (sum_is_visible>0) THEN asst_perf.product_id  
+                     END
+        ) / COUNT ( DISTINCT CASE when (count_add_to_cart>0) AND (sum_is_visible>0) THEN asst_perf.product_id  END ) AS A2C_to_Sold_perc
+FROM    daraz_ads.ads_drz_prd_assortment_battle_1m asst_perf
+inner JOIN 
+(
+    select product_id
+        ,CASE    WHEN venture_category1_name_en IN ('Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV, Audio / Video, Gaming & Wearables','TV Audio Video Gaming & Wearables','TV Audio Video Gaming & Wearables') THEN "Electronics"
+        WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN "Fashion" 
+        WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Charity and Donation','Furniture & Décor','Furniture & DÃ©cor','Furniture & Decor','Furniture & D√©cor','Home & Living','Kitchen & Dining','Laundry & Cleaning','Media, Music & Books','Media Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Tools, DIY & Outdoor','Tools DIY & Outdoor','Toys & Games' ,'Wholesale' ,'Packaging Material',"Special Promotion" ) THEN "Lifestyle"
+        WHEN venture_category1_name_en IN ('Groceries','Health & Beauty','Mother & Baby','Pet Supplies','Medicine','Livestock','Sample') THEN "FMCG"
+        WHEN venture_category1_name_en IN ('Digital Goods','Topup','Service Product','Special Digital Products') THEN "Digital Goods"  
+        END AS cluster_
+        ,CASE WHEN business_area IN ('Marketplace') AND business_type IN ('Daraz') AND venture_category1_name_en NOT IN ('Digital Goods','Special Digital Products') THEN 'Marketplace'
+            WHEN business_area IN ('Crossborder') AND business_type IN ('DarazGlobal','DarazMall') AND venture_category1_name_en NOT IN ('Digital Goods','Special Digital Products') THEN 'CrossBorder'
+            WHEN business_area IN ('Marketplace') AND business_type IN ('DarazMall') AND venture_category1_name_en NOT IN ('Digital Goods','Special Digital Products') THEN 'DarazMall'
+            WHEN business_area IN ('Retail') AND business_type IN ('DarazMall') AND venture_category1_name_en NOT IN ('Digital Goods','Special Digital Products') THEN 'Retail'
+            WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products') THEN 'DigitalGoods' 
+        END as channel
+        ,venture_category1_name_en
+        ,venture
+    from daraz_cdm.dim_drz_prd_sku_core 
+    where ds = MAX_PT("daraz_cdm.dim_drz_prd_sku_core")
+    and venture = 'PK'
+    --for lifestyle
+    and venture_category1_name_en in ('Furniture & Décor','Furniture & DÃ©cor','Furniture & Decor','Furniture & D√©cor')
+) prd
+on asst_perf.product_id = prd.product_id
+and asst_perf.venture_category1_name_en = prd.venture_category1_name_en
+and asst_perf.venture = prd.venture
+WHERE   (
+                ds IN ( '20220228' ,'20220331' ,'20220430' ,'20220531' ,'20220630','20220731','20220831')
+            OR  ds = MAX_PT("daraz_cdm.dwd_drz_trd_core_df")
+        )
+AND     asst_perf.venture IN ('PK')
+and     asst_perf.venture_category1_name_en in ('Furniture & Décor','Furniture & DÃ©cor','Furniture & Decor','Furniture & D√©cor')
+GROUP BY MONTHS
+         ,asst_perf.venture_category1_name_en
+         ,channel
+;
