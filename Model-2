@@ -1,0 +1,417 @@
+DROP TABLE IF EXISTS temp_other_industry_car_mapping_table_20210531 ;
+
+CREATE TABLE IF NOT EXISTS temp_other_industry_car_mapping_table_20210531 LIFECYCLE 1 AS
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'NON-EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'NON-EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'NON-EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR(20210531,1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR(20210531,1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR(20210531,1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR(20210531,1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR(20210531,1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR(20210531,1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    daraz_analyst_dev.temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR(20210531,1,6)
+                                    AND     industry_name NOT IN ('EL')
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+;
+-------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS never_shopped_el_20210531 ;
+
+CREATE TABLE IF NOT EXISTS never_shopped_el_20210531 LIFECYCLE 1 AS
+SELECT  O.VENTURE
+        ,O.BUYER_id
+        ,O.STANDING_MONTH
+        ,O.last_order_month
+        ,O.BUYER_FLAG AS other_buyer_flag
+        ,S.BUYER_FLAG AS el_buyer_flag
+        ,CASE    WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG
+                 WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG  
+         END AS main_flag
+FROM    temp_other_industry_car_mapping_table_20210531 O
+LEFT JOIN temp_same_industry_car_mapping_table_20210531 S
+ON      O.VENTURE = S.VENTURE
+AND     O.BUYER_ID = S.BUYER_ID
+AND     S.STANDING_MONTH = O.STANDING_MONTH
+WHERE   CASE WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG END IN ('NON-EL-CAR1 Buyer','NON-EL-CAR2 Buyer','NON-EL-CAR0 Buyer')
+;
+--------
+-- TOTAL BASE
+
+DROP TABLE IF EXISTS temp_total_base_20210531 ;
+
+CREATE TABLE IF NOT EXISTS temp_total_base_20210531 LIFECYCLE 1 AS
+SELECT  venture
+        ,standing_month
+        ,buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    temp_same_industry_car_mapping_table_20210531
+GROUP BY venture
+         ,standing_month
+         ,buyer_flag
+UNION ALL
+SELECT  venture
+        ,standing_month
+        ,other_buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    never_shopped_el_20210531
+GROUP BY venture
+         ,standing_month
+         ,other_buyer_flag
+;
+-- SELECT * FROM temp_total_base_20210531;
+------------------------------ CURRENT MONTH ----------------------------------------
+DROP TABLE IF EXISTS temp_car_modelling_EL_industry_wise_20210531;
+CREATE TABLE temp_car_modelling_EL_industry_wise_20210531 LIFECYCLE 1 AS 
+SELECT  'EL' AS industry
+        ,overall_layer_2.venture
+        ,overall_layer_2.purch_month
+        ,overall_layer_2.return_type
+        ,overall_layer_2.buyers_
+        ,overall_layer_2.GMV_
+        ,overall_layer_2.items_
+        ,overall_layer_2.orders_
+        ,base_
+FROM    (
+            SELECT  venture
+                    ,purch_month
+                    ,return_type
+                    ,COUNT(DISTINCT buyer_id) AS buyers_
+                    ,SUM(gmv_usd) AS GMV_
+                    ,SUM(items_) AS items_
+                    ,SUM(orders_) AS orders_
+            FROM    (
+                        SELECT  trd.venture
+                                ,trd.buyer_id
+                                ,trd.orders_
+                                ,trd.gmv_usd
+                                ,trd.items_
+                                ,trd.purch_month
+                                ,car.last_order_month AS el_last_order
+                                ,car.last_order_fy
+                                ,car.standing_month_fy
+                                ,car.standing_month
+                                ,car.Car_1_Flag
+                                ,car.Car_2_Flag
+                                ,CASE    WHEN car.last_order_month IS NULL AND other_car.last_order_month IS NULL THEN 'NEW-DARAZ-NEW-EL'
+                                         WHEN car.buyer_flag IS NULL THEN other_buyer_flag  
+                                         ELSE car.buyer_flag  
+                                 END AS return_type
+                        ---- trd core ----- current month buyers -----
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,purch_month
+                                            ,COUNT(DISTINCT order_number) AS orders_
+                                            ,SUM(gmv) AS gmv_usd
+                                            ,COUNT(DISTINCT sales_order_item_id) AS items_
+                                    FROM    daraz_analyst_dev.temp_car_model_trd_base
+                                    WHERE   purch_month = SUBSTR(20210531,1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                             ,purch_month
+                                ) AS trd
+                        ----- same industry buyers ----
+                        LEFT JOIN temp_same_industry_car_mapping_table_20210531 car
+                        ON      trd.venture = car.venture
+                        AND     trd.buyer_id = car.buyer_id    LEFT
+                        JOIN    never_shopped_el_20210531 other_car
+                        ON      trd.venture = other_car.venture
+                        AND     trd.buyer_id = other_car.buyer_id
+                    ) AS overall
+            GROUP BY venture
+                     ,purch_month
+                     ,return_type
+        ) AS overall_layer_2
+LEFT JOIN temp_total_base_20210531
+ON      overall_layer_2.venture = temp_total_base_20210531.venture
+AND     overall_layer_2.purch_month = temp_total_base_20210531.standing_month
+AND     overall_layer_2.return_type = temp_total_base_20210531.buyer_flag
+;
+
+SELECT * FROM temp_car_modelling_EL_industry_wise_20210531;
+
+--car_modelling_industry_wise
+DROP TABLE IF EXISTS temp_same_industry_car_mapping_table_20210430;
+CREATE TABLE IF NOT EXISTS temp_same_industry_car_mapping_table_20210430 LIFECYCLE 1 AS
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR(20210430,1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR(20210430,1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    daraz_analyst_dev.temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR(20210430,1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+;
+----------------------- NON INDUSTRY TO INDUSTRY
+--odps sql 
+--********************************************************************--
+--author:Sheikh, Mohammad Affan
+--create time:2022-06-13 11:00:18
+--********************************************************************--
+
+DROP TABLE IF EXISTS temp_other_industry_car_mapping_table_20210430 ;
+
+CREATE TABLE IF NOT EXISTS temp_other_industry_car_mapping_table_20210430 LIFECYCLE 1 AS
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'NON-EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'NON-EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'NON-EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR(20210430,1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR(20210430,1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR(20210430,1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    daraz_analyst_dev.temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR(20210430,1,6)
+                                    AND     industry_name NOT IN ('EL')
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+;
+-------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS never_shopped_el_20210430 ;
+
+CREATE TABLE IF NOT EXISTS never_shopped_el_20210430 LIFECYCLE 1 AS
+SELECT  O.VENTURE
+        ,O.BUYER_id
+        ,O.STANDING_MONTH
+        ,O.last_order_month
+        ,O.BUYER_FLAG AS other_buyer_flag
+        ,S.BUYER_FLAG AS el_buyer_flag
+        ,CASE    WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG
+                 WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG  
+         END AS main_flag
+FROM    temp_other_industry_car_mapping_table_20210430 O
+LEFT JOIN temp_same_industry_car_mapping_table_20210430 S
+ON      O.VENTURE = S.VENTURE
+AND     O.BUYER_ID = S.BUYER_ID
+AND     S.STANDING_MONTH = O.STANDING_MONTH
+WHERE   CASE WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG END IN ('NON-EL-CAR1 Buyer','NON-EL-CAR2 Buyer','NON-EL-CAR0 Buyer')
+;
+--------
+-- TOTAL BASE
+
+DROP TABLE IF EXISTS temp_total_base_20210430 ;
+
+CREATE TABLE IF NOT EXISTS temp_total_base_20210430 LIFECYCLE 1 AS
+SELECT  venture
+        ,standing_month
+        ,buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    temp_same_industry_car_mapping_table_20210430
+GROUP BY venture
+         ,standing_month
+         ,buyer_flag
+UNION ALL
+SELECT  venture
+        ,standing_month
+        ,other_buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    never_shopped_el_20210430
+GROUP BY venture
+         ,standing_month
+         ,other_buyer_flag
+;
+-- SELECT * FROM temp_total_base_20210430;
+------------------------------ CURRENT MONTH ----------------------------------------
+DROP TABLE IF EXISTS temp_car_modelling_EL_industry_wise_20210430;
+CREATE TABLE temp_car_modelling_EL_industry_wise_20210430 LIFECYCLE 1 AS 
+SELECT  'EL' AS industry
+        ,overall_layer_2.venture
+        ,overall_layer_2.purch_month
+        ,overall_layer_2.return_type
+        ,overall_layer_2.buyers_
+        ,overall_layer_2.GMV_
+        ,overall_layer_2.items_
+        ,overall_layer_2.orders_
+        ,base_
+FROM    (
+            SELECT  venture
+                    ,purch_month
+                    ,return_type
+                    ,COUNT(DISTINCT buyer_id) AS buyers_
+                    ,SUM(gmv_usd) AS GMV_
+                    ,SUM(items_) AS items_
+                    ,SUM(orders_) AS orders_
+            FROM    (
+                        SELECT  trd.venture
+                                ,trd.buyer_id
+                                ,trd.orders_
+                                ,trd.gmv_usd
+                                ,trd.items_
+                                ,trd.purch_month
+                                ,car.last_order_month AS el_last_order
+                                ,car.last_order_fy
+                                ,car.standing_month_fy
+                                ,car.standing_month
+                                ,car.Car_1_Flag
+                                ,car.Car_2_Flag
+                                ,CASE    WHEN car.last_order_month IS NULL AND other_car.last_order_month IS NULL THEN 'NEW-DARAZ-NEW-EL'
+                                         WHEN car.buyer_flag IS NULL THEN other_buyer_flag  
+                                         ELSE car.buyer_flag  
+                                 END AS return_type
+                        ---- trd core ----- current month buyers -----
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,purch_month
+                                            ,COUNT(DISTINCT order_number) AS orders_
+                                            ,SUM(gmv) AS gmv_usd
+                                            ,COUNT(DISTINCT sales_order_item_id) AS items_
+                                    FROM    daraz_analyst_dev.temp_car_model_trd_base
+                                    WHERE   purch_month = SUBSTR(20210430,1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                             ,purch_month
+                                ) AS trd
+                        ----- same industry buyers ----
+                        LEFT JOIN temp_same_industry_car_mapping_table_20210430 car
+                        ON      trd.venture = car.venture
+                        AND     trd.buyer_id = car.buyer_id    LEFT
+                        JOIN    never_shopped_el_20210430 other_car
+                        ON      trd.venture = other_car.venture
+                        AND     trd.buyer_id = other_car.buyer_id
+                    ) AS overall
+            GROUP BY venture
+                     ,purch_month
+                     ,return_type
+        ) AS overall_layer_2
+LEFT JOIN temp_total_base_20210430
+ON      overall_layer_2.venture = temp_total_base_20210430.venture
+AND     overall_layer_2.purch_month = temp_total_base_20210430.standing_month
+AND     overall_layer_2.return_type = temp_total_base_20210430.buyer_flag
+;
