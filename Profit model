@@ -1,0 +1,154 @@
+
+
+drop table if exists commission_configs;
+CREATE TABLE commission_configs as
+
+SELECT  REPLACE(express_value,"CAT_ID==", "") category_id
+        ,GET_JSON_OBJECT(rate, "$.fcRate.seller.rate") commission
+FROM    daraz_ods.s_hj_rate_rule_inst_pk
+WHERE   user_id =  - 1
+AND     ds = 20221117
+AND     biz_type IN ( 
+                        'LOCAL_COMMISSION_FEE_STD_PROCESS'
+                      )
+AND     STATUS = 1
+AND     is_delete = 0
+AND     end_time > UNIX_TIMESTAMP() * 1000
+AND     REPLACE(express_value,"CAT_ID==", "") <> 1
+ORDER BY category_id
+;
+
+
+---
+
+DROP TABLE IF EXISTS Seller_Comm
+;
+
+CREATE TABLE Seller_Comm AS
+SELECT  trd2.venture
+        ,TO_CHAR(trd2.fulfillment_create_date,'yyyymm') month
+        ,trd2.shop_account_code
+        ,trd2.shop_account_name
+        ,trd2.business_type
+        ,trd2.business_area
+        ,trd2.venture_category1_name_en
+        ,trd2.venture_category2_name_en
+        ,trd2.venture_category3_name_en
+        ,trd2.venture_category4_name_en
+       -- ,trd2.venture_category5_name_en
+        --,trd2.venture_category6_name_en
+        ,SUM(trd2.actual_gmv) AS nmv_PKR
+        ,SUM(trd2.actual_gmv * EXCHANGE_RATE) AS nmv_USD
+        ,SUM(trd2.unit_price - trd2.collectible_discount_amount_seller - trd2.voucher_discount_amount_seller - trd2.bundle_discount_amount_seller) value
+        ,SUM(comm.net_commission) commission_PKR
+        ,SUM(comm.net_commission * EXCHANGE_RATE) commission_USD -- ,SUM(comm.vat_on_commission) vat_on_commission
+        -- ,((-1 * SUM(commission)) - SUM(vat_on_commission)) AS net_commission
+        -- ,round(
+        --     (
+        --         (-1 * SUM(commission)) - SUM(vat_on_commission)
+        --     ) / ( SUM(trd2.unit_price - trd2.collectible_discount_amount_seller - trd2.voucher_discount_amount_seller - trd2.bundle_discount_amount_seller) )
+        --     ,4
+        -- ) net_commission_pct
+FROM    (
+            SELECT  venture
+                    ,shop_account_code
+                    ,shop_account_name
+                    ,sales_order_id
+                    ,sales_order_item_id
+                    ,product_id
+                    ,product_name
+                    ,daraz_sku
+                    ,venture_category1_name_en
+                    ,venture_category2_name_en
+                    ,venture_category3_name_en
+                    ,venture_category4_name_en
+                    --,venture_category5_name_en
+                    --,venture_category6_name_en
+                    ,business_type
+                    ,business_area
+                    ,fulfillment_create_date
+                    ,delivery_communicate_date
+                    ,actual_gmv
+                    ,unit_price
+                    ,discount_amount_by_seller
+                    ,bundle_discount_amount_seller
+                    ,shipping_discount_amount_seller
+                    ,cart_rule_discount_amount
+                    ,voucher_discount_amount_seller
+                    ,collectible_discount_amount_seller
+                    ,loyalty_discount_amount
+                    ,paymentinstantoff_discount_amount
+                    ,paymentcoupon_discount_amount
+                    ,store_credit_amount
+                    ,store_credit_amount_platform
+                    ,exchange_rate
+            FROM    daraz_cdm.dwd_drz_trd_core_df T
+            WHERE   ds = MAX_PT("daraz_cdm.dwd_drz_trd_core_df")
+            AND     TOLOWER(venture_category1_name_en) NOT LIKE '%test%'
+            AND     TO_CHAR(fulfillment_create_date,"yyyymmdd") between 20220101 and 20221130
+            AND     T.item_status_esm IN ('delivered','return_denied','return_action_pending')
+            AND     T.unit_price > 1
+            AND     T.venture = 'PK'
+            AND     business_type <> "DarazGlobal"
+            AND     business_area NOT IN ("Retail","Crossborder")
+            AND     venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery')
+        ) trd2
+LEFT JOIN   (
+                SELECT  sales_order_item_id AS item_id_tag
+                        ,venture
+                        ,COALESCE(SUM(CASE WHEN transaction_type IN ('16','123','82') THEN abs(amount) - vat_amount WHEN transaction_type IN (65,15,104) THEN (
+                                    abs(amount) - vat_amount
+                        ) * -1 END),0) AS net_commission
+                FROM    daraz_ads.ads_drz_transaction_detail_finance_df
+                WHERE   ds = MAX_PT("daraz_ads.ads_drz_transaction_detail_finance_df")
+                AND     venture IN ('PK')
+                GROUP BY sales_order_item_id
+                         ,venture
+            ) comm
+ON      trd2.venture = comm.venture
+AND     trd2.sales_order_item_id = comm.item_id_tag
+GROUP BY trd2.venture
+         ,TO_CHAR(trd2.fulfillment_create_date,'yyyymm')
+         ,trd2.shop_account_code
+         ,trd2.shop_account_name
+         ,trd2.business_type
+         ,trd2.business_area
+         ,trd2.venture_category1_name_en
+         ,trd2.venture_category2_name_en
+         ,trd2.venture_category3_name_en
+         ,trd2.venture_category4_name_en
+        -- ,trd2.venture_category5_name_en
+         --,trd2.venture_category6_name_en
+;
+
+
+DROP TABLE IF EXISTS Industry_campaign_hourly
+;
+
+CREATE TABLE Industry_campaign_hourly AS
+SELECT  TO_CHAR(fulfillment_create_date,'yyyymmdd: hh') AS hours
+      ,CASE    WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products') THEN 'Digital Goods'
+                     WHEN venture_category1_name_en IN ('Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV, Audio / Video, Gaming & Wearables','TV Audio Video Gaming & Wearables') THEN 'Electronics'
+                     WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                    WHEN venture_category1_name_en IN ('Groceries','Health & Beauty','Mother & Baby','Pet Supplies') THEN 'FMCG'
+                    ELSE 'Lifestyle'
+                    END AS Industry
+        
+
+        ,SUM(actual_gmv * EXCHANGE_rate) AS gmv
+        ,COUNT(DISTINCT sales_order_item_id) AS items
+        ,COUNT(DISTINCT sales_order_id) AS orders
+        ,COUNT(DISTINCT buyer_id) AS buyers
+FROM    daraz_cdm.dwd_drz_trd_core_hh
+WHERE   ds = MAX_PT("daraz_cdm.dwd_drz_trd_core_hh") --WHERE TO_CHAR(fulfillment_create_date, "yyyymm") = substr(max_pt('daraz_cdm.dwd_drz_trd_core_df'),1,6)
+AND     TO_CHAR(fulfillment_create_date,"yyyymmdd") = 20221212 --WHERE TO_CHAR(fulfillment_create_date, "yyyymm") = TO_CHAR(DATEADD(GETDATE(), 0,'mm'),'yyyymm')
+AND     venture = "PK"
+GROUP BY TO_CHAR(fulfillment_create_date,'yyyymmdd: hh')
+        ,CASE    WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products') THEN 'Digital Goods'
+                     WHEN venture_category1_name_en IN ('Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV, Audio / Video, Gaming & Wearables','TV Audio Video Gaming & Wearables') THEN 'Electronics'
+                     WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                    WHEN venture_category1_name_en IN ('Groceries','Health & Beauty','Mother & Baby','Pet Supplies') THEN 'FMCG'
+                    ELSE 'Lifestyle'
+                    END
+       ;
+
