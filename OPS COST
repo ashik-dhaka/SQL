@@ -1,0 +1,1504 @@
+--odps sql 
+--********************************************************************--
+--author:Rahman, S M Ashiqur
+--create time:2022-09-21 11:11:46
+--********************************************************************--
+DROP TABLE IF EXISTS ktest2_dex_cost_base_bd
+;
+
+CREATE TABLE IF NOT EXISTS ktest2_dex_cost_base_bd
+LIFECYCLE 365 AS
+SELECT  *
+FROM    (
+            SELECT  dlv.venture
+                    ,c.tracking_number
+                    ,c.sales_order_item_id
+                    ,dlv.delivery_type
+                    ,t.industry
+                    ,t.L1_category -- new
+                    ,CASE   WHEN dlv.shipping_type IS NOT NULL THEN dlv.shipping_type
+                            WHEN t.business_area = 'Retail' THEN 'Warehouse'
+                            WHEN t.business_area = 'Marketplace' THEN 'Marketplace'
+                    END AS shipping_type -- ,dlv.shipping_type
+                    ,t.business_area
+                    ,dlv.payment_type -- new
+                    ,dlv.flow_1
+                    ,dlv_point -- new
+                    ,dlv.Weight_Buckets -- new
+                    ,CASE   WHEN L1_Location = 'Same Province'
+                            AND L2_location = 'Same City' THEN 'Same City'
+                            ELSE L1_location
+                    END AS movement_type -- new
+                    ,FM_sum
+                    ,sort_sum
+                    ,LH_sum
+                    ,LM_sum
+                    ,COUNT(DISTINCT c.sales_order_item_id) OVER (PARTITION BY c.tracking_number ) AS items_per_pkg
+                    ,fm_3pl_name
+                    ,lm_3pl_name
+                    ,lvl3_in_linehaul_ts
+                    ,forward_count
+                    ,fd_count
+                    ,cr_count
+                    ,rtc_count
+                    ,rtm_count
+            FROM    (
+                        SELECT  tracking_number
+                                ,sales_order_item_id
+                                ,SUM(CASE WHEN Tag_ = 'FM_Unit_Cost' THEN unit_cost ELSE 0 END) AS FM_sum
+                                ,SUM(CASE WHEN Tag_ = 'sort_Unit_Cost' THEN unit_cost ELSE 0 END) AS sort_sum
+                                ,SUM(CASE WHEN Tag_ = 'LH_Unit_Cost' THEN unit_cost ELSE 0 END) AS LH_sum
+                                ,SUM(CASE WHEN Tag_ = 'LM_Unit_Cost' THEN unit_cost ELSE 0 END) AS LM_sum
+                                ,MAX(CASE WHEN package_flow = 'Forward' THEN 1 ELSE 0 END) AS forward_count
+                                ,MAX(CASE WHEN package_flow = 'Failed_delivery' THEN 1 ELSE 0 END) AS fd_count
+                                ,MAX(CASE WHEN package_flow = 'Customer_return' THEN 1 ELSE 0 END) AS cr_count
+                                ,MAX(CASE WHEN package_flow = 'Return_to_customer' THEN 1 ELSE 0 END) AS rtc_count
+                                ,MAX(CASE WHEN package_flow = 'Return_to_merchant' THEN 1 ELSE 0 END) AS rtm_count
+                        FROM    (
+                                    SELECT  "FM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.fmdeliveryfleet_itemlevel_08 -- AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "FM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.fmf_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "FM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.fmh_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "FM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.fmsemifixed_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "FM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.fmpackaging_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lmdeliveryfleet_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lmf_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lmh_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lmsemifixed_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LM_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lmpackaging_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LH_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lhdeliveryfleet_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "LH_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.lh_hr_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.dexsorthr_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.dexsortpackaging_itemlevel_08 --AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.dexsortsemifixed_itemlevel_08 -- AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.cbopshr_itemlevel_08 -- AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.cbopspackaging_itemlevel_08 -- AND     package_flow NOT IN ('Failed_delivery')
+                                    UNION ALL
+                                    SELECT  "sort_Unit_Cost" AS Tag_
+                                            ,sales_order_item_id
+                                            ,tracking_number
+                                            ,CASE   WHEN unit_cost IS NULL THEN 0
+                                                    ELSE unit_cost
+                                            END AS unit_cost
+                                            ,package_flow
+                                    FROM    daraz_data_lake_dev.cbopssemifixed_itemlevel_08 -- AND     package_flow NOT IN ('Failed_delivery')
+                                )  --where package_flow = 'Failed_delivery'
+                        GROUP BY tracking_number
+                                 ,sales_order_item_id
+                    ) c
+            LEFT JOIN   (
+                            SELECT  venture
+                                    ,tracking_number
+                                    ,sales_order_item_id
+                                    ,REPLACE(venture_category1_name_en,',','') AS L1_category -- new
+                                    ,CASE   WHEN business_area = 'Crossborder' THEN 'Marketplace'
+                                            ELSE business_area
+                                    END AS business_area
+                                    ,delivery_type
+                                    ,CASE   WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products','Topup') THEN 'DG'
+                                            WHEN venture_category1_name_en IN ('TV, Audio / Video, Gaming & Wearables','Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV Audio Video Gaming & Wearables') THEN 'EL'
+                                            WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                                            WHEN venture_category1_name_en IN ('Health & Beauty','Groceries','Pet Supplies','Medicine','Mother & Baby') THEN 'FMCG'
+                                            WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Home & Living','Charity and Donation','Furniture & Decor','Furniture & Décor','Kitchen & Dining','Tools DIY & Outdoor','Tools DIY & Outdoor','Laundry & Cleaning','Media, Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Toys & Games','Tools, DIY & Outdoor','Packaging Material','Media Music & Books') THEN 'Lifestyle'
+                                            WHEN venture_category1_name_en IN ('Special Promotion','Test Product2','Test Product','Wholesale','Sample','SOF Categories','Testing Categories') THEN 'Test'
+                                            ELSE 'Unknown'
+                                    END AS INDUSTRY
+                            FROM    daraz_cdm.dwd_drz_trd_core_df
+                            WHERE   ds = MAX_PT("daraz_cdm.dwd_drz_trd_core_df")
+                            GROUP BY INDUSTRY
+                                     ,venture_category1_name_en
+                                     ,venture
+                                     ,delivery_type
+                                     ,business_area
+                                     ,tracking_number
+                                     ,sales_order_item_id
+                        ) t
+            ON      c.sales_order_item_id = t.sales_order_item_id
+            LEFT JOIN   (
+                            SELECT  tracking_number
+                                    ,package_id
+                                    ,fm_3pl_name
+                                    ,lm_3pl_name
+                                    ,lvl3_in_linehaul_ts
+                                    ,shipping_type
+                                    ,delivery_type
+                                    ,CASE   WHEN TOLOWER(lvl2_destination_address_name) = TOLOWER(lvl2_origin_address_name) THEN 'Same Province'
+                                            ELSE 'Diff Province'
+                                    END AS L1_Location -- new
+                                    ,CASE   WHEN TOLOWER(lvl3_destination_address_name) LIKE TOLOWER(CONCAT('%',lvl3_origin_address_name,'%')) THEN 'Same City'
+                                            ELSE 'Diff City'
+                                    END AS L2_Location -- new
+                                    ,CASE   WHEN is_cod = 1 THEN 'COD'
+                                            ELSE 'Prepaid'
+                                    END AS payment_type -- new
+                                    ,CASE   WHEN customer_collection_station_id IS NOT NULL
+                                            AND (
+                                                        TOLOWER(customer_collection_station_name) LIKE '%daraz%'
+                                                        OR TOLOWER(customer_collection_station_name) LIKE '%dex%'
+                                            ) THEN 'DEX CP'
+                                            WHEN customer_collection_station_id IS NOT NULL THEN 'Partner CP'
+                                            ELSE 'D2D'
+                                    END AS dlv_point -- new
+                                    ,venture
+                                    ,CASE   WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lvl3_in_linehaul_ts IS NULL THEN '3pl MDS'
+                                            WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lvl3_in_linehaul_ts IS NOT NULL THEN '3pl LM'
+                                            WHEN fm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX') THEN '3pl FDS'
+                                            WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX') THEN 'DEX'
+                                            ELSE 'unknown'
+                                    END AS Flow_1
+                                    ,CASE   WHEN chargeable_weight < 0.5 THEN 'A: 0 to 0.5'
+                                            WHEN chargeable_weight < 1 THEN 'B: 0.5 to 1'
+                                            WHEN chargeable_weight < 2 THEN 'C: 1 to 2'
+                                            WHEN chargeable_weight < 4 THEN 'D: 2 to 4'
+                                            WHEN chargeable_weight < 8 THEN 'E: 4 to 8'
+                                            WHEN chargeable_weight < 18 THEN 'F: 8 to 18'
+                                            WHEN chargeable_weight < 25 THEN 'G: 18 to 25'
+                                            WHEN chargeable_weight < 35 THEN 'H: 25 to 35'
+                                            WHEN chargeable_weight < 55 THEN 'I: 35 to 55'
+                                            WHEN chargeable_weight < 90 THEN 'J: 55 to 90'
+                                            WHEN chargeable_weight < 150 THEN 'K: 90 to 150'
+                                            WHEN chargeable_weight < 400 THEN 'L: 150 to 400'
+                                            ELSE 'NA'
+                                    END AS Weight_Buckets -- new
+                            FROM    drzops_cdm.dwd_drz_lgt_dlv_pkg_df
+                            WHERE   ds = MAX_PT("drzops_cdm.dwd_drz_lgt_dlv_pkg_df")
+                        ) dlv
+            ON      c.tracking_number = dlv.tracking_number
+        ) ab
+;
+
+-- Dex items (aggregated)
+DROP TABLE IF EXISTS ktest2_dex_cost_bd
+;
+
+CREATE TABLE IF NOT EXISTS ktest2_dex_cost_bd
+LIFECYCLE 365 AS
+SELECT  venture
+        ,delivery_type
+        ,industry
+        ,L1_category -- new
+        ,shipping_type
+        ,business_area
+        ,payment_type -- new
+        ,flow_1
+        ,movement_type -- new
+        ,weight_buckets -- new
+        ,COUNT(*) AS item_count
+        ,AVG(items_per_pkg) AS avg_items_per_pkg
+        ,AVG(FM_sum) AS avg_FM
+        ,AVG(sort_sum) AS avg_sort
+        ,AVG(LH_sum) AS avg_LH
+        ,AVG(LM_sum) AS avg_LM
+        ,AVG(FM_sum + sort_sum + LH_sum + LM_sum) AS avg_DEX
+        ,SUM(forward_count) AS item_count_fwd
+        ,SUM(fd_count) AS item_count_fd
+        ,SUM(cr_count) AS item_count_cr
+        ,SUM(rtc_count) AS item_count_rtc
+        ,SUM(rtm_count) AS item_count_rtm
+FROM    ktest2_dex_cost_base_bd
+GROUP BY venture
+         ,delivery_type
+         ,industry
+         ,L1_category -- new
+         ,shipping_type
+         ,business_area
+         ,payment_type -- new
+         ,flow_1
+         ,movement_type -- new
+         ,weight_buckets -- new
+;
+
+-- 3pl fds items
+DROP TABLE IF EXISTS ktest2_fds_cost_base_bd
+;
+
+CREATE TABLE IF NOT EXISTS ktest2_fds_cost_base_bd
+LIFECYCLE 365 AS
+SELECT  *
+FROM    (
+            SELECT  t.venture
+                    ,dlv.delivery_type
+                    ,t.industry
+                    ,t.L1_category -- new
+                    ,CASE   WHEN dlv.shipping_type IS NOT NULL THEN dlv.shipping_type
+                            WHEN t.business_area = 'Retail' THEN 'Warehouse'
+                            WHEN t.business_area = 'Marketplace' THEN 'Marketplace'
+                    END AS shipping_type
+                    ,t.business_area
+                    ,dlv.payment_type -- new
+                    ,dlv.flow_1
+                    ,dlv.Weight_Buckets -- new
+                    ,dlv.dlv_point -- new
+                    ,CASE   WHEN L1_Location = 'Same Province'
+                            AND L2_location = 'Same City' THEN 'Same City'
+                            ELSE L1_location
+                    END AS movement_type -- new
+                    ,t.sales_order_item_id
+                    ,CASE   WHEN t.tracking_number IS NULL THEN NULL
+                            ELSE COUNT(DISTINCT t.sales_order_item_id) OVER (PARTITION BY t.tracking_number )
+                    END AS items_per_pkg
+                    ,0 AS avg_FM
+                    ,0 AS avg_sort
+                    ,0 AS avg_LH
+                    ,0 AS avg_LM
+                    ,0 AS avg_DEX
+                    ,fm_3pl_name
+                    ,lm_3pl_name
+                    ,lvl3_in_linehaul_ts
+                    ,package_type
+                    ,package_type2
+                    ,CASE   WHEN package_type = 'Sales_order' THEN 1
+                            ELSE 0
+                    END AS forward_count
+                    ,CASE   WHEN package_type = 'Sales_order'
+                            AND package_type2 = 'Failed_delivery' THEN 1
+                            ELSE 0
+                    END AS fd_count
+                    ,CASE   WHEN package_type = 'Customer_return' THEN 1
+                            ELSE 0
+                    END AS cr_count
+                    ,CASE   WHEN package_type = 'Return_to_customer' THEN 1
+                            ELSE 0
+                    END AS rtc_count
+                    ,CASE   WHEN package_type = 'Return_to_merchant' THEN 1
+                            ELSE 0
+                    END AS rtm_count
+            FROM    (
+                        SELECT  venture
+                                ,tracking_number
+                                ,sales_order_item_id
+                                ,REPLACE(venture_category1_name_en,',','') AS L1_category -- new
+                                ,CASE   WHEN business_area = 'Crossborder' THEN 'Marketplace'
+                                        ELSE business_area
+                                END AS business_area
+                                ,delivery_type
+                                ,CASE   WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products','Topup') THEN 'DG'
+                                        WHEN venture_category1_name_en IN ('TV, Audio / Video, Gaming & Wearables','Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV Audio Video Gaming & Wearables') THEN 'EL'
+                                        WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                                        WHEN venture_category1_name_en IN ('Health & Beauty','Groceries','Pet Supplies','Medicine','Mother & Baby') THEN 'FMCG'
+                                        WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Home & Living','Charity and Donation','Furniture & Decor','Furniture & Décor','Kitchen & Dining','Tools DIY & Outdoor','Tools DIY & Outdoor','Laundry & Cleaning','Media, Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Toys & Games','Tools, DIY & Outdoor','Packaging Material','Media Music & Books') THEN 'Lifestyle'
+                                        WHEN venture_category1_name_en IN ('Special Promotion','Test Product2','Test Product','Wholesale','Sample','SOF Categories','Testing Categories') THEN 'Test'
+                                        ELSE 'Unknown'
+                                END AS INDUSTRY
+                        FROM    daraz_cdm.dwd_drz_trd_core_df
+                        WHERE   ds = MAX_PT("daraz_cdm.dwd_drz_trd_core_df")
+                        AND     TO_CHAR(delivery_date,'yyyymm') = '202208'
+                        GROUP BY INDUSTRY
+                                 ,venture_category1_name_en
+                                 ,venture
+                                 ,delivery_type
+                                 ,business_area
+                                 ,tracking_number
+                                 ,sales_order_item_id
+                    ) t
+            INNER JOIN  (
+                            SELECT  tracking_number
+                                    ,package_id
+                                    ,fm_3pl_name
+                                    ,lm_3pl_name
+                                    ,lvl3_in_linehaul_ts
+                                    ,shipping_type
+                                    ,CASE   WHEN is_cod = 1 THEN 'COD'
+                                            ELSE 'Prepaid'
+                                    END AS payment_type -- new
+                                    ,CASE   WHEN lvl2_destination_address_name = lvl2_origin_address_name THEN 'Same Province'
+                                            ELSE 'Diff Province'
+                                    END AS L1_Location -- new
+                                    ,CASE   WHEN lvl3_destination_address_name LIKE CONCAT('%',lvl3_origin_address_name,'%') THEN 'Same City'
+                                            ELSE 'Diff City'
+                                    END AS L2_Location -- new
+                                    ,delivery_type
+                                    ,CASE   WHEN customer_collection_station_id IS NOT NULL THEN 'DEX CP'
+                                            ELSE 'D2D'
+                                    END AS dlv_point -- new
+                                    ,venture
+                                    ,CASE   WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lvl3_in_linehaul_ts IS NULL THEN '3pl MDS'
+                                            WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lvl3_in_linehaul_ts IS NOT NULL THEN '3pl LM'
+                                            WHEN fm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name NOT IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX') THEN '3pl FDS'
+                                            WHEN fm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX')
+                                            AND lm_3pl_name IN ('PK-DEX','BD-DEX','LK-DEX','NP-DEX','MM-DailyExpress','MM-ShopEX') THEN 'DEX'
+                                            ELSE 'unknown'
+                                    END AS Flow_1
+                                    ,CASE   WHEN chargeable_weight < 0.5 THEN 'A: 0 to 0.5'
+                                            WHEN chargeable_weight < 1 THEN 'B: 0.5 to 1'
+                                            WHEN chargeable_weight < 2 THEN 'C: 1 to 2'
+                                            WHEN chargeable_weight < 4 THEN 'D: 2 to 4'
+                                            WHEN chargeable_weight < 8 THEN 'E: 4 to 8'
+                                            WHEN chargeable_weight < 18 THEN 'F: 8 to 18'
+                                            WHEN chargeable_weight < 25 THEN 'G: 18 to 25'
+                                            WHEN chargeable_weight < 35 THEN 'H: 25 to 35'
+                                            WHEN chargeable_weight < 55 THEN 'I: 35 to 55'
+                                            WHEN chargeable_weight < 90 THEN 'J: 55 to 90'
+                                            WHEN chargeable_weight < 150 THEN 'K: 90 to 150'
+                                            WHEN chargeable_weight < 400 THEN 'L: 150 to 400'
+                                            ELSE 'NA'
+                                    END AS Weight_Buckets -- new
+                                    ,package_type -- new
+                                    ,CASE   WHEN COALESCE(lvl1_delivery_failed_ts,lvl2_delivery_failed_ts,lvl3_delivery_failed_ts) IS NOT NULL THEN 'Failed_delivery'
+                                            ELSE package_type
+                                    END AS package_type2 -- new
+                            FROM    drzops_cdm.dwd_drz_lgt_dlv_pkg_df
+                            WHERE   ds = MAX_PT("drzops_cdm.dwd_drz_lgt_dlv_pkg_df")
+                        ) dlv
+            ON      t.tracking_number = dlv.tracking_number
+        ) ab
+WHERE   flow_1 = '3pl FDS'
+;
+
+-- 3pl fds items (aggregated)
+DROP TABLE IF EXISTS ktest2_fds_cost_bd
+;
+
+CREATE TABLE IF NOT EXISTS ktest2_fds_cost_bd
+LIFECYCLE 365 AS
+SELECT  venture
+        ,delivery_type
+        ,industry
+        ,L1_category -- new
+        ,shipping_type
+        ,business_area
+        ,payment_type -- new
+        ,flow_1
+        ,movement_type -- new
+        ,weight_buckets -- new
+        ,COUNT(*) AS item_count
+        ,AVG(items_per_pkg) AS avg_items_per_pkg
+        ,avg_FM
+        ,avg_sort
+        ,avg_LH
+        ,avg_LM
+        ,avg_DEX
+        ,SUM(forward_count) AS item_count_fwd
+        ,SUM(fd_count) AS item_count_fd
+        ,SUM(cr_count) AS item_count_cr
+        ,SUM(rtc_count) AS item_count_rtc
+        ,SUM(rtm_count) AS item_count_rtm
+FROM    ktest2_fds_cost_base_bd
+GROUP BY venture
+         ,delivery_type
+         ,industry
+         ,L1_category -- new
+         ,shipping_type
+         ,business_area
+         ,payment_type -- new
+         ,flow_1
+         ,movement_type -- new
+         ,weight_buckets -- new
+         ,avg_FM
+         ,avg_sort
+         ,avg_LH
+         ,avg_LM
+         ,avg_DEX
+;
+
+-- Dex + 3pl fds items (aggregated)
+DROP TABLE IF EXISTS ktest2_dex_fds_cost_bd
+;
+
+CREATE TABLE IF NOT EXISTS ktest2_dex_fds_cost_bd
+LIFECYCLE 365 AS
+SELECT  *
+FROM    ktest2_dex_cost_bd
+UNION ALL
+SELECT  *
+FROM    ktest2_fds_cost_bd
+;
+
+
+
+
+SELECT  * from join_table_bd ;
+
+
+
+;
+
+DROP TABLE IF EXISTS join_table_bd
+;
+
+CREATE TABLE IF NOT EXISTS join_table_bd
+LIFECYCLE 365 AS
+
+
+
+SELECT  l.fx_rate
+        ,l.amount2 AS tran
+        ,CASE   WHEN l.3pl_tran IS NULL THEN 0
+                ELSE l.3pl_tran
+        END AS 3pl_tran
+        ,l.venture
+        ,l.delivery_type
+        ,l.industry
+        ,l.l1_category
+        ,l.shipping_type
+        ,l.business_area
+        ,l.payment_type
+        ,l.flow_1
+        ,l.movement_type
+        ,l.weight_buckets
+        ,l.item_count
+        ,l.avg_items_per_pkg
+        ,l.avg_fm
+        ,l.avg_sort
+        ,l.avg_lh
+        ,l.avg_lm
+        ,l.avg_dex
+        ,l.item_count_fwd
+        ,l.item_count_fd
+        ,l.item_count_cr
+        ,l.item_count_rtc
+        ,l.item_count_rtm
+        ,l.wh
+        ,k.bavg_fm
+        ,k.bavg_sort
+        ,k.bavg_lh
+        ,k.bavg_lm
+        ,k.bavg_dex
+FROM    (
+            SELECT  c.fx_rate
+                    ,Gl.amount2
+                    ,a.venture
+                    ,a.delivery_type
+                    ,a.industry
+                    ,a.l1_category
+                    ,a.shipping_type
+                    ,a.business_area
+                    ,a.payment_type
+                    ,a.flow_1
+                    ,a.movement_type
+                    ,a.weight_buckets
+                    ,a.item_count
+                    ,a.avg_items_per_pkg
+                    ,a.avg_fm
+                    ,a.avg_sort
+                    ,a.avg_lh
+                    ,a.avg_lm
+                    ,a.avg_dex
+                    ,a.item_count_fwd
+                    ,a.item_count_fd
+                    ,a.item_count_cr
+                    ,a.item_count_rtc
+                    ,a.item_count_rtm
+                    ,r.3pl_tran
+                    ,SUM(ml.amount) Wh
+            FROM    (
+                        SELECT  venture
+                                ,delivery_type
+                                ,industry
+                                ,l1_category
+                                ,shipping_type
+                                ,business_area
+                                ,payment_type
+                                ,flow_1
+                                ,movement_type
+                                ,weight_buckets
+                                ,item_count
+                                ,avg_items_per_pkg
+                                ,avg_fm
+                                ,avg_sort
+                                ,avg_lh
+                                ,avg_lm
+                                ,avg_dex
+                                ,item_count_fwd
+                                ,item_count_fd
+                                ,item_count_cr
+                                ,item_count_rtc
+                                ,item_count_rtm
+                        FROM    ktest2_dex_fds_cost_bd
+                    ) a
+            LEFT JOIN   (
+                            SELECT  venture AS venture3
+                                    ,month AS fx_month
+                                    ,fx_rate
+                            FROM    daraz_ads.ab_fx_rates
+                            WHERE   month = '202208'
+                        ) c
+            ON      a.venture = c.venture3
+            INNER JOIN  (
+                            SELECT  TO_CHAR(dates,'yyyymm') day_
+                                    ,SUM(amount) amount2
+                                    ,currency
+                                    ,dept
+                                    ,SUBSTR(currency,1,2) AS venture
+                            FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                            WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                            AND     d7 = 'Cost of Logistics'
+                            AND     dept LIKE '%TRAN%'
+                            GROUP BY currency
+                                     ,dept
+                                     ,TO_CHAR(dates,'yyyymm')
+                        ) Gl
+            ON      Gl.venture = a.venture
+            INNER JOIN  (
+                            SELECT  TO_CHAR(dates,'yyyymm') day_
+                                    ,SUM(amount) amount
+                                    ,currency
+                                    ,SUBSTR(currency,1,2) AS venture
+                                    ,d7
+                                    ,dept
+                            FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                            WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                            AND     d7 = 'Cost of Logistics'
+                            AND     dept LIKE '%WH%'
+                            GROUP BY currency
+                                     ,d7
+                                     ,dept
+                                     ,TO_CHAR(dates,'yyyymm')
+                        ) ml
+            ON      ml.venture = a.venture
+            LEFT JOIN   (
+                            SELECT  TO_CHAR(dates,'yyyymm') day_
+                                    ,SUM(amount) 3pl_tran
+                                    ,currency
+                                    ,SUBSTR(currency,1,2) AS venture
+                            FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                            WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                            AND     d7 = 'Cost of Logistics'
+                            AND     dept LIKE '%DEXLH%'
+                            AND     gl = '40012'
+                            AND     currency IN ('MMK','NPR')
+                            GROUP BY currency
+                                     ,TO_CHAR(dates,'yyyymm')
+                        ) r
+            ON      ml.venture = r.venture
+            GROUP BY c.fx_rate
+                     ,Gl.amount2
+                     ,a.venture
+                     ,a.delivery_type
+                     ,a.industry
+                     ,a.l1_category
+                     ,a.shipping_type
+                     ,a.business_area
+                     ,a.payment_type
+                     ,a.flow_1
+                     ,a.movement_type
+                     ,a.weight_buckets
+                     ,a.item_count
+                     ,a.avg_items_per_pkg
+                     ,a.avg_fm
+                     ,a.avg_sort
+                     ,a.avg_lh
+                     ,a.avg_lm
+                     ,a.avg_dex
+                     ,a.item_count_fwd
+                     ,a.item_count_fd
+                     ,a.item_count_cr
+                     ,a.item_count_rtc
+                     ,a.item_count_rtm
+                     ,r.3pl_tran
+        ) l
+LEFT JOIN   (
+                SELECT  c.fx_rate
+                        ,Gl.amount2
+                        ,a.venture
+                        ,a.delivery_type
+                        ,a.industry
+                        ,a.l1_category
+                        ,a.shipping_type
+                        ,a.business_area
+                        ,a.payment_type
+                        ,a.flow_1
+                        ,a.movement_type
+                        ,a.weight_buckets
+                        ,a.item_count
+                        ,a.avg_items_per_pkg
+                        ,a.avg_fm AS bavg_fm
+                        ,a.avg_sort AS bavg_sort
+                        ,a.avg_lh AS bavg_lh
+                        ,a.avg_lm AS bavg_lm
+                        ,a.avg_dex AS bavg_dex
+                        ,a.item_count_fwd
+                        ,a.item_count_fd
+                        ,a.item_count_cr
+                        ,a.item_count_rtc
+                        ,a.item_count_rtm
+                        ,SUM(ml.amount) Wh
+                FROM    (
+                            SELECT  venture
+                                    ,delivery_type
+                                    ,industry
+                                    ,l1_category
+                                    ,shipping_type
+                                    ,business_area
+                                    ,payment_type
+                                    ,flow_1
+                                    ,movement_type
+                                    ,weight_buckets
+                                    ,item_count
+                                    ,avg_items_per_pkg
+                                    ,avg_fm
+                                    ,avg_sort
+                                    ,avg_lh
+                                    ,avg_lm
+                                    ,avg_dex
+                                    ,item_count_fwd
+                                    ,item_count_fd
+                                    ,item_count_cr
+                                    ,item_count_rtc
+                                    ,item_count_rtm
+                            FROM    ktest2_dex_fds_cost_bd
+                        ) a
+                LEFT JOIN   (
+                                SELECT  venture AS venture3
+                                        ,month AS fx_month
+                                        ,fx_rate
+                                FROM    daraz_ads.ab_fx_rates
+                                WHERE   month = '202208'
+                            ) c
+                ON      a.venture = c.venture3
+                INNER JOIN  (
+                                SELECT  TO_CHAR(dates,'yyyymm') day_
+                                        ,SUM(amount) amount2
+                                        ,currency
+                                        ,dept
+                                        ,SUBSTR(currency,1,2) AS venture
+                                FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                AND     d7 = 'Cost of Logistics'
+                                AND     dept LIKE '%TRAN%'
+                                GROUP BY currency
+                                         ,dept
+                                         ,TO_CHAR(dates,'yyyymm')
+                            ) Gl
+                ON      Gl.venture = a.venture
+                INNER JOIN  (
+                                SELECT  TO_CHAR(dates,'yyyymm') day_
+                                        ,SUM(amount) amount
+                                        ,currency
+                                        ,SUBSTR(currency,1,2) AS venture
+                                        ,d7
+                                        ,dept
+                                FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                AND     d7 = 'Cost of Logistics'
+                                AND     dept LIKE '%WH%'
+                                GROUP BY currency
+                                         ,d7
+                                         ,dept
+                                         ,TO_CHAR(dates,'yyyymm')
+                            ) ml
+                ON      ml.venture = a.venture
+                AND     flow_1 = 'DEX'
+                GROUP BY c.fx_rate
+                         ,Gl.amount2
+                         ,a.venture
+                         ,a.delivery_type
+                         ,a.industry
+                         ,a.l1_category
+                         ,a.shipping_type
+                         ,a.business_area
+                         ,a.payment_type
+                         ,a.flow_1
+                         ,a.movement_type
+                         ,a.weight_buckets
+                         ,a.item_count
+                         ,a.avg_items_per_pkg
+                         ,a.avg_fm
+                         ,a.avg_sort
+                         ,a.avg_lh
+                         ,a.avg_lm
+                         ,a.avg_dex
+                         ,a.item_count_fwd
+                         ,a.item_count_fd
+                         ,a.item_count_cr
+                         ,a.item_count_rtc
+                         ,a.item_count_rtm
+            ) k
+ON      l.venture = k.venture
+AND     l.delivery_type = k.delivery_type
+AND     l.industry = k.industry
+AND     l.l1_category = k.l1_category
+AND     l.shipping_type = k.shipping_type
+AND     l.business_area = k.business_area
+AND     l.payment_type = k.payment_type
+AND     l.movement_type = k.movement_type
+AND     l.weight_buckets = k.weight_buckets
+;
+
+
+DROP TABLE IF EXISTS fixed_cost_bd
+;
+
+CREATE TABLE IF NOT EXISTS fixed_cost_bd
+LIFECYCLE 365 AS
+SELECT  venture
+        ,delivery_type
+        ,industry
+        ,l1_category
+        ,shipping_type
+        ,business_area
+        ,payment_type
+        ,flow_1
+        ,movement_type
+        ,weight_buckets
+        ,item_count
+        ,avg_items_per_pkg
+        ,avg_fm
+        ,avg_sort
+        ,avg_lh
+        ,avg_lm
+        ,avg_dex
+        ,item_count_fwd
+        ,item_count_fd
+        ,item_count_cr
+        ,item_count_rtc
+        ,item_count_rtm
+        ,fx_rate
+        ,join_tran
+        ,wh
+        ,bavg_fm
+        ,bavg_sort
+        ,bavg_lh
+        ,bavg_lm
+        ,bavg_dex
+        ,DEX_LOG_COST
+        ,wh_item_count_VENTURE
+        ,(
+                    cost_per_flow / item_count
+        ) 3pl_cost_unit
+        ,CASE   WHEN shipping_type = 'Warehouse' THEN unit_ff_cost
+                ELSE 0
+        END AS unit_ff_Cost
+FROM    (
+            SELECT  venture
+                    ,delivery_type
+                    ,industry
+                    ,l1_category
+                    ,shipping_type
+                    ,business_area
+                    ,payment_type
+                    ,flow_1
+                    ,movement_type
+                    ,weight_buckets
+                    ,item_count
+                    ,avg_items_per_pkg
+                    ,avg_fm
+                    ,avg_sort
+                    ,avg_lh
+                    ,avg_lm
+                    ,avg_dex
+                    ,item_count_fwd
+                    ,item_count_fd
+                    ,item_count_cr
+                    ,item_count_rtc
+                    ,item_count_rtm
+                    ,fx_rate
+                    ,join_tran
+                    ,wh
+                    ,bavg_fm
+                    ,bavg_sort
+                    ,bavg_lh
+                    ,bavg_lm
+                    ,bavg_dex
+                    ,DEX_LOG_COST
+                    ,wh_item_count_VENTURE
+                    ,(
+                                (
+                                            3pl_log_weight / 3pl_weight_sum
+                                ) * join_tran
+                    ) AS cost_per_flow
+                    ,(
+                                wh / wh_item_count_venture
+                    ) AS unit_ff_cost
+            FROM    (
+                        SELECT  venture
+                                ,delivery_type
+                                ,industry
+                                ,l1_category
+                                ,shipping_type
+                                ,business_area
+                                ,payment_type
+                                ,flow_1
+                                ,movement_type
+                                ,weight_buckets
+                                ,item_count
+                                ,avg_items_per_pkg
+                                ,avg_fm
+                                ,avg_sort
+                                ,avg_lh
+                                ,avg_lm
+                                ,avg_dex
+                                ,item_count_fwd
+                                ,item_count_fd
+                                ,item_count_cr
+                                ,item_count_rtc
+                                ,item_count_rtm
+                                ,fx_rate
+                                ,join_tran
+                                ,wh
+                                ,bavg_fm
+                                ,bavg_sort
+                                ,bavg_lh
+                                ,bavg_lm
+                                ,bavg_dex
+                                ,DEX_LOG_COST
+                                ,3PL_LOG_WEIGHT
+                                ,SUM(CASE WHEN shipping_type = 'Warehouse' THEN item_count ELSE 0 END) OVER (PARTITION BY venture ) AS wh_item_count_VENTURE
+                                ,SUM(3pl_log_weight) OVER (PARTITION BY venture ) AS 3pl_weight_sum
+                        FROM    (
+                                    SELECT  venture
+                                            ,delivery_type
+                                            ,industry
+                                            ,l1_category
+                                            ,shipping_type
+                                            ,business_area
+                                            ,payment_type
+                                            ,flow_1
+                                            ,movement_type
+                                            ,weight_buckets
+                                            ,item_count
+                                            ,avg_items_per_pkg
+                                            ,avg_fm
+                                            ,avg_sort
+                                            ,avg_lh
+                                            ,avg_lm
+                                            ,avg_dex
+                                            ,item_count_fwd
+                                            ,item_count_fd
+                                            ,item_count_cr
+                                            ,item_count_rtc
+                                            ,item_count_rtm
+                                            ,fx_rate
+                                            ,tran
+                                            ,3pl_tran
+                                            ,tran + 3pl_tran AS join_tran
+                                            ,wh
+                                            ,bavg_fm
+                                            ,bavg_sort
+                                            ,bavg_lh
+                                            ,bavg_lm
+                                            ,bavg_dex
+                                            ,DEX_LOG_COST
+                                            ,3PL_LOG_WEIGHT
+                                    FROM    (
+                                                SELECT  venture
+                                                        ,delivery_type
+                                                        ,industry
+                                                        ,l1_category
+                                                        ,shipping_type
+                                                        ,business_area
+                                                        ,payment_type
+                                                        ,flow_1
+                                                        ,movement_type
+                                                        ,weight_buckets
+                                                        ,item_count
+                                                        ,avg_items_per_pkg
+                                                        ,avg_fm
+                                                        ,avg_sort
+                                                        ,avg_lh
+                                                        ,avg_lm
+                                                        ,avg_dex
+                                                        ,item_count_fwd
+                                                        ,item_count_fd
+                                                        ,item_count_cr
+                                                        ,item_count_rtc
+                                                        ,item_count_rtm
+                                                        ,fx_rate
+                                                        ,tran
+                                                        ,3pl_tran
+                                                        ,wh
+                                                        ,bavg_fm
+                                                        ,bavg_sort
+                                                        ,bavg_lh
+                                                        ,bavg_lm
+                                                        ,bavg_dex
+                                                        ,CASE   WHEN flow_1 = 'DEX' THEN avg_fm + avg_sort + avg_lh + avg_lm
+                                                                WHEN flow_1 = '3pl FDS' THEN 0
+                                                                WHEN flow_1 = '3pl MDS' THEN avg_sort + avg_fm
+                                                                WHEN flow_1 = '3pl LM' THEN avg_fm + avg_sort + avg_lh
+                                                                WHEN flow_1 = 'unknown' THEN avg_fm + avg_sort + avg_lh + avg_lm
+                                                                ELSE 0
+                                                        END AS DEX_LOG_COST
+                                                        ,CASE   WHEN flow_1 = 'DEX' THEN 0
+                                                                WHEN flow_1 = '3pl FDS' THEN bavg_fm + bavg_sort + bavg_lh + bavg_lm
+                                                                WHEN flow_1 = '3pl MDS' THEN bavg_lh + bavg_lm
+                                                                WHEN flow_1 = '3pl LM' THEN bavg_lm
+                                                                WHEN flow_1 = 'unknown' THEN 0
+                                                                ELSE 0
+                                                        END AS 3PL_LOG_WEIGHT
+                                                FROM    join_table_bd
+                                            ) 
+                                ) 
+                    ) 
+        ) 
+;
+
+
+
+
+DROP TABLE IF EXISTS All_cost
+;
+
+
+CREATE TABLE IF NOT EXISTS All_cost
+LIFECYCLE 365 AS
+
+
+        SELECT  day_
+        ,venture
+        ,CASE   WHEN 3pl_tran IS NULL THEN 0
+                ELSE 3pl_tran
+        END AS 3pl_tran
+        ,COL - All_ AS Diff
+        ,All_ AS TWD
+        ,COL
+FROM    (
+            SELECT  day_
+                    ,venture
+                    ,Tran + Wh + Dex AS All_
+                    ,cost_of_logistics AS COL
+                    ,3pl_tran
+            FROM    (
+                        SELECT  k.venture
+                                ,k.day_
+                                ,k.Tran
+                                ,p.WH
+                                ,u.Dex
+                                ,y.Cost_of_Logistics
+                                ,r.3pl_tran
+                        FROM    (
+                                    SELECT  TO_CHAR(dates,'yyyymm') day_
+                                            ,SUM(amount) Tran
+                                            ,currency
+                                            ,dept
+                                            ,SUBSTR(currency,1,2) AS venture
+                                    FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                    WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                    AND     d7 = 'Cost of Logistics'
+                                    AND     dept LIKE '%TRAN%'
+                                    GROUP BY currency
+                                             ,dept
+                                             ,TO_CHAR(dates,'yyyymm')
+                                ) k
+                        INNER JOIN  (
+                                        SELECT  TO_CHAR(dates,'yyyymm') day_
+                                                ,SUM(amount) WH
+                                                ,currency
+                                                ,SUBSTR(currency,1,2) AS venture
+                                        FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                        WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                        AND     d7 = 'Cost of Logistics'
+                                        AND     dept LIKE '%WH%'
+                                        GROUP BY currency
+                                                 ,TO_CHAR(dates,'yyyymm')
+                                    ) p
+                        ON      k.venture = p.venture
+                        INNER JOIN  (
+                                        SELECT  TO_CHAR(dates,'yyyymm') day_
+                                                ,SUM(amount) Dex
+                                                ,currency
+                                                ,SUBSTR(currency,1,2) AS venture
+                                        FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                        WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                        AND     d7 = 'Cost of Logistics'
+                                        AND     dept LIKE '%DEX%'
+                                        GROUP BY currency
+                                                 ,TO_CHAR(dates,'yyyymm')
+                                    ) u
+                        ON      k.venture = u.venture
+                        INNER JOIN  (
+                                        SELECT  TO_CHAR(dates,'yyyymm') day_
+                                                ,SUM(amount) Cost_of_Logistics
+                                                ,currency
+                                                ,SUBSTR(currency,1,2) AS venture
+                                        FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                        WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                        AND     d7 = 'Cost of Logistics'
+                                        GROUP BY currency
+                                                 ,TO_CHAR(dates,'yyyymm')
+                                    ) y
+                        ON      k.venture = y.venture
+                        LEFT JOIN   (
+                                        SELECT  TO_CHAR(dates,'yyyymm') day_
+                                                ,SUM(amount) 3pl_tran
+                                                ,currency
+                                                ,SUBSTR(currency,1,2) AS venture
+                                        FROM    daraz_data_lake_dev.drz_unit_cost_gl_mi
+                                        WHERE   TO_CHAR(dates,'yyyymm') = '202208'
+                                        AND     d7 = 'Cost of Logistics'
+                                        AND     dept LIKE '%DEXLH%'
+                                        AND     gl = '40012'
+                                        AND     currency IN ('MMK','NPR')
+                                        GROUP BY currency
+                                                 ,TO_CHAR(dates,'yyyymm')
+                                    ) r
+                        ON      k.venture = r.venture
+                    ) 
+        ) 
+;
+
+
+SELECT  ven
+        ,delivery_type
+        ,industry
+        ,l1_category
+        ,shipping_type
+        ,business_area
+        ,payment_type
+        ,flow_1
+        ,movement_type
+        ,weight_buckets
+        ,item_count
+        ,avg_items_per_pkg
+        ,item_count_fwd
+        ,item_count_fd
+        ,item_count_cr
+        ,item_count_rtc
+        ,item_count_rtm
+        ,dex_log_cost
+        ,unit_ff_cost
+        ,wo_mp_unit
+        ,3pl_cost_unit_2
+        ,(
+                    dex_log_cost + 3pl_cost_unit_2 + unit_ff_cost + wo_mp_unit
+        ) / fx_rate AS Total_unit_cost
+FROM    (
+            SELECT  ven
+                    ,delivery_type
+                    ,industry
+                    ,l1_category
+                    ,shipping_type
+                    ,business_area
+                    ,payment_type
+                    ,flow_1
+                    ,movement_type
+                    ,weight_buckets
+                    ,item_count
+                    ,avg_items_per_pkg
+                    ,item_count_fwd
+                    ,item_count_fd
+                    ,item_count_cr
+                    ,item_count_rtc
+                    ,item_count_rtm
+                    ,dex_log_cost
+                    ,unit_ff_cost
+                    ,3pl_cost_unit
+                    ,fx_rate --,3pl_cost_unit_2
+                    ,wo_mp_unit
+                    ,CAST(3pl_cost_unit AS DECIMAL) AS 3pl_cost_unit_2 -- ,(dex_log_cost + 3pl_cost_unit_2 + unit_ff_cost + wo_mp_unit) / fx_rate AS Total_unit_cost
+            FROM    (
+                        SELECT  ven
+                                ,delivery_type
+                                ,industry
+                                ,l1_category
+                                ,shipping_type
+                                ,business_area
+                                ,payment_type
+                                ,flow_1
+                                ,movement_type
+                                ,weight_buckets
+                                ,item_count
+                                ,avg_items_per_pkg
+                                ,item_count_fwd
+                                ,item_count_fd
+                                ,item_count_cr
+                                ,item_count_rtc
+                                ,item_count_rtm
+                                ,dex_log_cost
+                                ,unit_ff_cost
+                                ,CASE   WHEN 3pl_cost_unit IS NULL THEN 0
+                                        ELSE 3pl_cost_unit
+                                END AS 3pl_cost_unit
+                                ,wo_mp_unit
+                                ,fx_rate
+                        FROM    (
+                                    SELECT  ven
+                                            ,delivery_type
+                                            ,industry
+                                            ,l1_category
+                                            ,shipping_type
+                                            ,business_area
+                                            ,payment_type
+                                            ,flow_1
+                                            ,movement_type
+                                            ,weight_buckets
+                                            ,item_count
+                                            ,avg_items_per_pkg
+                                            ,avg_fm
+                                            ,avg_sort
+                                            ,avg_lh
+                                            ,avg_lm
+                                            ,avg_dex
+                                            ,item_count_fwd
+                                            ,item_count_fd
+                                            ,item_count_cr
+                                            ,item_count_rtc
+                                            ,item_count_rtm
+                                            ,fx_rate
+                                            ,wh
+                                            ,bavg_fm
+                                            ,bavg_sort
+                                            ,bavg_lh
+                                            ,bavg_lm
+                                            ,bavg_dex
+                                            ,dex_log_cost
+                                            ,wh_item_count_venture
+                                            ,3pl_cost_unit
+                                            ,unit_ff_cost
+                                            ,twd
+                                            ,col
+                                            ,join_tran
+                                            ,diff
+                                            ,total_count
+                                            ,item_diff
+                                            ,Dex_cost
+                                            ,wo_mp
+                                            ,wo_mp / total_count AS wo_mp_unit
+                                    FROM    (
+                                                SELECT  ven
+                                                        ,delivery_type
+                                                        ,industry
+                                                        ,l1_category
+                                                        ,shipping_type
+                                                        ,business_area
+                                                        ,payment_type
+                                                        ,flow_1
+                                                        ,movement_type
+                                                        ,weight_buckets
+                                                        ,item_count
+                                                        ,avg_items_per_pkg
+                                                        ,avg_fm
+                                                        ,avg_sort
+                                                        ,avg_lh
+                                                        ,avg_lm
+                                                        ,avg_dex
+                                                        ,item_count_fwd
+                                                        ,item_count_fd
+                                                        ,item_count_cr
+                                                        ,item_count_rtc
+                                                        ,item_count_rtm
+                                                        ,fx_rate
+                                                        ,wh
+                                                        ,bavg_fm
+                                                        ,bavg_sort
+                                                        ,bavg_lh
+                                                        ,bavg_lm
+                                                        ,bavg_dex
+                                                        ,dex_log_cost
+                                                        ,wh_item_count_venture
+                                                        ,3pl_cost_unit
+                                                        ,unit_ff_cost
+                                                        ,twd
+                                                        ,col
+                                                        ,join_tran
+                                                        ,diff
+                                                        ,total_count
+                                                        ,diff / total_count AS item_diff
+                                                        ,Dex_cost
+                                                        ,col - dex_cost - join_tran - wh AS wo_mp
+                                                FROM    (
+                                                            SELECT  ven
+                                                                    ,delivery_type
+                                                                    ,industry
+                                                                    ,l1_category
+                                                                    ,shipping_type
+                                                                    ,business_area
+                                                                    ,payment_type
+                                                                    ,flow_1
+                                                                    ,movement_type
+                                                                    ,weight_buckets
+                                                                    ,item_count
+                                                                    ,avg_items_per_pkg
+                                                                    ,avg_fm
+                                                                    ,avg_sort
+                                                                    ,avg_lh
+                                                                    ,avg_lm
+                                                                    ,avg_dex
+                                                                    ,item_count_fwd
+                                                                    ,item_count_fd
+                                                                    ,item_count_cr
+                                                                    ,item_count_rtc
+                                                                    ,item_count_rtm
+                                                                    ,fx_rate
+                                                                    ,wh
+                                                                    ,bavg_fm
+                                                                    ,bavg_sort
+                                                                    ,bavg_lh
+                                                                    ,bavg_lm
+                                                                    ,bavg_dex
+                                                                    ,dex_log_cost
+                                                                    ,wh_item_count_venture
+                                                                    ,3pl_cost_unit
+                                                                    ,unit_ff_cost
+                                                                    ,twd
+                                                                    ,col
+                                                                    ,join_tran
+                                                                    ,diff
+                                                                    ,total_count
+                                                                    ,diff / total_count AS item_diff
+                                                                    ,SUM(dex_log_cost * item_count) OVER (PARTITION BY ven ) AS Dex_cost
+                                                            FROM    (
+                                                                        SELECT  ven
+                                                                                ,delivery_type
+                                                                                ,industry
+                                                                                ,l1_category
+                                                                                ,shipping_type
+                                                                                ,business_area
+                                                                                ,payment_type
+                                                                                ,flow_1
+                                                                                ,movement_type
+                                                                                ,weight_buckets
+                                                                                ,item_count
+                                                                                ,avg_items_per_pkg
+                                                                                ,avg_fm
+                                                                                ,avg_sort
+                                                                                ,avg_lh
+                                                                                ,avg_lm
+                                                                                ,avg_dex
+                                                                                ,item_count_fwd
+                                                                                ,item_count_fd
+                                                                                ,item_count_cr
+                                                                                ,item_count_rtc
+                                                                                ,item_count_rtm
+                                                                                ,fx_rate
+                                                                                ,wh
+                                                                                ,bavg_fm
+                                                                                ,bavg_sort
+                                                                                ,bavg_lh
+                                                                                ,bavg_lm
+                                                                                ,bavg_dex
+                                                                                ,dex_log_cost
+                                                                                ,wh_item_count_venture
+                                                                                ,3pl_cost_unit
+                                                                                ,unit_ff_cost
+                                                                                ,twd
+                                                                                ,col
+                                                                                ,join_tran
+                                                                                ,diff
+                                                                                ,SUM(item_count) OVER (PARTITION BY venture ) AS total_count
+                                                                        FROM    (
+                                                                                    SELECT  op.venture AS ven
+                                                                                            ,op.delivery_type
+                                                                                            ,op.industry
+                                                                                            ,op.l1_category
+                                                                                            ,op.shipping_type
+                                                                                            ,op.business_area
+                                                                                            ,op.payment_type
+                                                                                            ,op.flow_1
+                                                                                            ,op.movement_type
+                                                                                            ,op.weight_buckets
+                                                                                            ,op.item_count
+                                                                                            ,op.avg_items_per_pkg
+                                                                                            ,op.avg_fm
+                                                                                            ,op.avg_sort
+                                                                                            ,op.avg_lh
+                                                                                            ,op.avg_lm
+                                                                                            ,op.avg_dex
+                                                                                            ,op.item_count_fwd
+                                                                                            ,op.item_count_fd
+                                                                                            ,op.item_count_cr
+                                                                                            ,op.item_count_rtc
+                                                                                            ,op.item_count_rtm
+                                                                                            ,op.fx_rate
+                                                                                            ,op.wh
+                                                                                            ,op.bavg_fm
+                                                                                            ,op.bavg_sort
+                                                                                            ,op.bavg_lh
+                                                                                            ,op.bavg_lm
+                                                                                            ,op.bavg_dex
+                                                                                            ,op.dex_log_cost
+                                                                                            ,op.wh_item_count_venture
+                                                                                            ,op.3pl_cost_unit
+                                                                                            ,op.unit_ff_cost
+                                                                                            ,ob.venture
+                                                                                            ,op.join_tran
+                                                                                            ,ob.twd
+                                                                                            ,ob.col
+                                                                                            ,ob.col - ob.twd AS diff
+                                                                                    FROM    (
+                                                                                                SELECT  venture
+                                                                                                        ,delivery_type
+                                                                                                        ,industry
+                                                                                                        ,l1_category
+                                                                                                        ,shipping_type
+                                                                                                        ,business_area
+                                                                                                        ,payment_type
+                                                                                                        ,flow_1
+                                                                                                        ,movement_type
+                                                                                                        ,weight_buckets
+                                                                                                        ,item_count
+                                                                                                        ,avg_items_per_pkg
+                                                                                                        ,avg_fm
+                                                                                                        ,avg_sort
+                                                                                                        ,avg_lh
+                                                                                                        ,avg_lm
+                                                                                                        ,avg_dex
+                                                                                                        ,item_count_fwd
+                                                                                                        ,item_count_fd
+                                                                                                        ,item_count_cr
+                                                                                                        ,item_count_rtc
+                                                                                                        ,item_count_rtm
+                                                                                                        ,fx_rate
+                                                                                                        ,wh
+                                                                                                        ,bavg_fm
+                                                                                                        ,bavg_sort
+                                                                                                        ,bavg_lh
+                                                                                                        ,bavg_lm
+                                                                                                        ,bavg_dex
+                                                                                                        ,dex_log_cost
+                                                                                                        ,wh_item_count_venture
+                                                                                                        ,3pl_cost_unit
+                                                                                                        ,unit_ff_cost
+                                                                                                        ,join_tran
+                                                                                                FROM    fixed_cost_bd
+                                                                                            ) op
+                                                                                    LEFT JOIN   (
+                                                                                                    SELECT  venture
+                                                                                                            ,3pl_tran + twd AS twd
+                                                                                                            ,col
+                                                                                                    FROM    All_cost
+                                                                                                ) ob
+                                                                                    ON      op.venture = ob.venture
+                                                                                ) 
+                                                                    ) 
+                                                        ) 
+                                            ) 
+                                ) 
+                    ) 
+        ) 
+;
