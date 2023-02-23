@@ -1,0 +1,596 @@
+--odps sql 
+--********************************************************************--
+--author:Rahman, S M Ashiqur
+--create time:2023-01-11 12:13:32
+--********************************************************************--
+
+--DROP TABLE IF EXISTS CAR_model;
+CREATE TABLE IF NOT EXISTS CAR_model
+LIFECYCLE 365 AS
+SELECT  *
+FROM    (
+            SELECT  buyer_id
+                    ,venture
+                    ,order_create_date
+                    ,sales_order_id
+                    ,actual_gmv * exchange_rate AS gmv
+                    ,order_number
+                    ,sales_order_item_id
+                    ,CASE   WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products','Topup') THEN 'DG'
+                            WHEN venture_category1_name_en IN ('TV, Audio / Video, Gaming & Wearables','Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV Audio Video Gaming & Wearables') THEN 'EL'
+                            WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                            WHEN venture_category1_name_en IN ('Health & Beauty','Groceries','Pet Supplies','Medicine','Mother & Baby') THEN 'FMCG'
+                            WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Home & Living','Charity and Donation','Furniture & Decor','Furniture & Décor','Kitchen & Dining','Tools DIY & Outdoor','Tools DIY & Outdoor','Laundry & Cleaning','Media, Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Toys & Games','Tools, DIY & Outdoor','Packaging Material','Media Music & Books') THEN 'Lifestyle'
+                            WHEN venture_category1_name_en IN ('Special Promotion','Test Product2','Test Product','Wholesale','Sample','SOF Categories','Testing Categories') THEN 'Test'
+                            ELSE 'Unknown'
+                    END AS industry_name
+                    ,venture_category1_name_en
+                    ,CASE   WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201804 AND 201806 THEN 'FY19Q1'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201807 AND 201809 THEN 'FY19Q2'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201810 AND 201812 THEN 'FY19Q3'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201901 AND 201903 THEN 'FY19Q4'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201904 AND 201906 THEN 'FY20Q1'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201907 AND 201909 THEN 'FY20Q2'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201910 AND 201912 THEN 'FY20Q3'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202001 AND 202003 THEN 'FY20Q4'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202004 AND 202006 THEN 'FY21Q1'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202007 AND 202009 THEN 'FY21Q2'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202010 AND 202012 THEN 'FY21Q3'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202101 AND 202103 THEN 'FY21Q4'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202104 AND 202106 THEN 'FY22Q1'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202107 AND 202109 THEN 'FY22Q2'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202110 AND 202112 THEN 'FY22Q3'
+                            ELSE TO_CHAR(order_create_date,'yyyymm')
+                    END AS Purchase_fy_qrtr
+                    ,CASE   WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201804 AND 201903 THEN 'FY19'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201904 AND 202003 THEN 'FY20'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202004 AND 202103 THEN 'FY21'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202204 AND 202303 THEN 'FY23'
+                    END AS purch_fy
+                    ,TO_CHAR(order_create_date,'yyyymm') AS purch_month
+            FROM    daraz_cdm.dwd_drz_trd_core_df AS T
+            WHERE   T.ds = 20220531
+            AND     TOLOWER(venture_category1_name_en) NOT LIKE '%test%'
+            AND     venture IN ('BD')
+            AND     (
+                        CASE   WHEN TO_CHAR(T.order_create_date,'yyyymm') = '201911' THEN is_fulfilled = 1
+                                WHEN TO_CHAR(T.order_create_date,'yyyymm') >= '201810' THEN unit_price > 1
+                                AND is_fulfilled = 1
+                                WHEN TO_CHAR(T.order_create_date,'yyyymm') < '201810' THEN TRUE
+                                ELSE FALSE
+                        END
+            )
+        ) T
+;
+
+
+DROP TABLE IF EXISTS ads_drz_snp_car_modelling_industry1 ;
+CREATE TABLE IF NOT EXISTS ads_drz_snp_car_modelling_industry1
+(
+    industry STRING 
+    ,purch_month STRING 
+    ,return_type STRING 
+    ,buyers_ STRING 
+    ,gmv_ STRING 
+    ,items_ STRING 
+    ,orders_ STRING 
+    ,base_ STRING 
+
+)
+COMMENT 'ads_drz_snp_car_modelling_industry_el1'
+PARTITIONED BY 
+(
+    ds STRING
+    ,venture STRING
+)
+LIFECYCLE 365
+;
+
+WITH temp_same_industry_car_mapping_table1 AS (
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR('${bizdate}',1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    car_model
+                                    WHERE   purch_month < SUBSTR('${bizdate}',1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+
+)
+,temp_other_industry_car_mapping_table AS (
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'NON-EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'NON-EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'NON-EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR('${bizdate}',1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR('${bizdate}',1,6)
+                                    AND     industry_name NOT IN ('EL')
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+
+)
+
+
+
+
+
+
+;
+SELECT  deepest_category_name
+        ,Round(SUM(actual_gmv * exchange_rate),2) / COUNT(DISTINCT sales_order_item_id) AS AIV
+FROM    daraz_cdm.dwd_drz_trd_core_df
+WHERE   ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'YYYYMMDD')
+AND     TO_CHAR(fulfillment_create_date,'yyyy') = '2022'
+AND    deepest_category_name IN ('Bath Towels','Bed Sheets','Bedding Sets','Pillows & Bolsters','Drink Bottles')
+and is_fulfilled = '1'
+and paid_price >1
+and paid_price <5000
+group by deepest_category_name
+
+;
+
+
+SELECT  CASE   WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products','Topup') THEN 'DG'
+                            WHEN venture_category1_name_en IN ('TV, Audio / Video, Gaming & Wearables','Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV Audio Video Gaming & Wearables') THEN 'EL'
+                            WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN 'Fashion'
+                            WHEN venture_category1_name_en IN ('Health & Beauty','Groceries','Pet Supplies','Medicine','Mother & Baby') THEN 'FMCG'
+                            WHEN venture_category1_name_en IN ('Bedding & Bath','Toys Kids & Babies','Home & Living','Charity and Donation','Furniture & Decor','Furniture & Décor','Kitchen & Dining','Tools DIY & Outdoor','Tools DIY & Outdoor','Laundry & Cleaning','Media, Music & Books','Motors','Sports & Outdoors','Stationery & Craft','Toys & Games','Tools, DIY & Outdoor','Packaging Material','Media Music & Books') THEN 'Lifestyle'
+                            WHEN venture_category1_name_en IN ('Special Promotion','Test Product2','Test Product','Wholesale','Sample','SOF Categories','Testing Categories') THEN 'Test'
+                            ELSE 'Unknown'
+                    END AS industry_name
+           ,count(DISTINCT buyer_id) buyer 
+           ,brand_name,brand_id	
+           ,CASE   WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201804 AND 201903 THEN 'FY19'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 201904 AND 202003 THEN 'FY20'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202004 AND 202103 THEN 'FY21'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                            WHEN TO_CHAR(order_create_date,'yyyymm') BETWEEN 202204 AND 202303 THEN 'FY23'
+                    END AS purch_fy
+FROM    daraz_cdm.dwd_drz_trd_core_df
+WHERE   ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'YYYYMMDD')
+AND     TO_CHAR(fulfillment_create_date,'yyyy') BETWEEN  '201904' and  '202303'
+group by purch_fy,industry_name,venture_category1_name_en,brand_name,brand_id	
+
+
+-----------------------------------------
+----------------------------------------
+
+
+--@exclude_input=daraz_analyst.temp_car_model_trd_base
+--odps sql 
+--********************************************************************--
+--author:Syed ObaidUllah
+--create time:2022-06-13 16:26:19
+--********************************************************************--
+--car_modelling_industry_wise_electronics
+
+CREATE TABLE IF NOT EXISTS temp_car_model_trd_base LIFECYCLE 10 AS
+SELECT  *
+FROM    (
+            SELECT  buyer_id
+                    ,venture
+                    ,order_create_date
+                    ,sales_order_id
+                    ,actual_gmv*exchange_rate AS gmv
+                    ,order_number
+                    ,sales_order_item_id
+                    ,Case    WHEN venture_category1_name_en IN ('Digital Goods','Special Digital Products') THEN "DG"
+                             WHEN venture_category1_name_en IN ('Cameras','Computers & Laptops','Home Appliances','Mobiles & Tablets','TV, Audio / Video, Gaming & Wearables','TV Audio Video Gaming & Wearables','TV Audio Video Gaming & Wearables') THEN"EL"
+                             WHEN venture_category1_name_en IN ('Bags and Travel','Fashion','Watches Sunglasses Jewellery') THEN "Fashion"
+                             WHEN venture_category1_name_en IN ('Groceries','Health & Beauty','Mother & Baby','Pet Supplies') THEN "FMCG"
+                             WHEN venture_category1_name_en IN ('Bedding & Bath','Charity and Donation','Furniture & Décor','Kitchen & Dining','Laundry & Cleaning','Media, Music & Books','Motors','Packaging Material','Sports & Outdoors','Stationery & Craft','Tools, DIY & Outdoor','Toys & Games','Home & Living','Toys Kids & Babies','Furniture & DÃcor','Media Music & Books','Tools DIY & Outdoor') THEN "LS"
+                             WHEN venture_category1_name_en IN ('Test Product2','Service Product','SOF Categories','Sample','Livestock','Testing Pakistan Category') THEN "Others" 
+                             ELSE NULL 
+                     END AS industry_name
+                    ,case    WHEN to_char(order_create_date,'yyyymm') BETWEEN 201804 AND 201806 THEN 'FY19Q1'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201807 AND 201809 THEN 'FY19Q2'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201810 AND 201812 THEN 'FY19Q3'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201901 AND 201903 THEN 'FY19Q4'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201904 AND 201906 THEN 'FY20Q1'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201907 AND 201909 THEN 'FY20Q2'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201910 AND 201912 THEN 'FY20Q3'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202001 AND 202003 THEN 'FY20Q4'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202004 AND 202006 THEN 'FY21Q1'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202007 AND 202009 THEN 'FY21Q2'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202010 AND 202012 THEN 'FY21Q3'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202101 AND 202103 THEN 'FY21Q4'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202104 AND 202106 THEN 'FY22Q1'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202107 AND 202109 THEN 'FY22Q2'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202110 AND 202112 THEN 'FY22Q3' 
+                             ELSE to_char(order_create_date,'yyyymm') 
+                     END AS Purchase_fy_qrtr
+                    ,CASE    WHEN to_char(order_create_date,'yyyymm') BETWEEN 201804 AND 201903 THEN 'FY19'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 201904 AND 202003 THEN 'FY20'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202004 AND 202103 THEN 'FY21'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202104 AND 202203 THEN 'FY22'
+                             WHEN to_char(order_create_date,'yyyymm') BETWEEN 202204 AND 202303 THEN 'FY23'
+                     END AS purch_fy
+                    ,to_char(order_create_date,'yyyymm') AS purch_month
+            FROM    daraz_cdm.dwd_drz_trd_core_df AS T
+            WHERE   T.ds = 20220531
+            AND     tolower(venture_category1_name_en) NOT LIKE '%test%'
+            and     (
+                            CASE WHEN TO_CHAR(T.order_create_date,'yyyymm') = '201911' THEN is_fulfilled = 1 WHEN TO_CHAR(T.order_create_date,'yyyymm') >= '201810' THEN unit_price > 1
+                        AND is_fulfilled = 1 WHEN TO_CHAR(T.order_create_date,'yyyymm') < '201810' THEN TRUE ELSE FALSE END
+                    )
+        ) T
+;
+
+
+
+-- DROP TABLE IF EXISTS ads_drz_snp_car_modelling_industry_el ;
+CREATE TABLE IF NOT EXISTS ads_drz_snp_car_modelling_industry_el
+(
+    industry STRING 
+    ,purch_month STRING 
+    ,return_type STRING 
+    ,buyers_ STRING 
+    ,gmv_ STRING 
+    ,items_ STRING 
+    ,orders_ STRING 
+    ,base_ STRING 
+
+)
+COMMENT 'ads_drz_snp_car_modelling_industry_el'
+PARTITIONED BY 
+(
+    ds STRING
+    ,venture STRING
+)
+LIFECYCLE 10
+;
+
+WITH temp_same_industry_car_mapping_table AS (
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR('${bizdate}',1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR('${bizdate}',1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+
+)
+,temp_other_industry_car_mapping_table AS (
+SELECT  *
+        ,CASE    when (Car_1_Flag IS NULL AND Car_2_Flag IS NULL) THEN Car_0_Flag
+                 when (Car_0_Flag IS NULL AND Car_1_Flag IS NULL) THEN Car_2_Flag  
+                 ELSE Car_1_Flag  
+         END AS buyer_flag
+FROM    (
+            SELECT  venture
+                    ,buyer_id
+                    ,last_order_month
+                    ,last_order_fy
+                    ,standing_month_fy
+                    ,standing_month
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_fy = 'FY22' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_fy = 'FY21' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_fy = 'FY20' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_fy = 'FY19' THEN 'NON-EL-CAR1 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_fy = 'FY18' THEN 'NON-EL-CAR1 Buyer'  
+                     END AS Car_1_Flag
+                    ,CASE    WHEN standing_month_fy = 'FY23' AND last_order_month < 202104 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY22' AND last_order_month < 202004 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY21' AND last_order_month < 201904 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY20' AND last_order_month < 201804 THEN 'NON-EL-CAR2 Buyer'
+                             WHEN standing_month_fy = 'FY19' AND last_order_month < 201704 THEN 'NON-EL-CAR2 Buyer'  
+                     END AS Car_2_Flag
+                    ,CASE    WHEN standing_month_fy = last_order_fy THEN 'NON-EL-CAR0 Buyer'  
+                     END AS Car_0_Flag
+            FROM    (
+                        SELECT  venture
+                                ,buyer_id
+                                ,last_order_month
+                                ,CASE    WHEN last_order_month BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN last_order_month BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN last_order_month BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN last_order_month BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN last_order_month BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS last_order_fy
+                                ,CASE    WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201804 AND 201903 THEN 'FY19'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 201904 AND 202003 THEN 'FY20'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202004 AND 202103 THEN 'FY21'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202104 AND 202203 THEN 'FY22'
+                                         WHEN SUBSTR('${bizdate}',1,6) BETWEEN 202204 AND 202303 THEN 'FY23'  
+                                 END AS standing_month_fy
+                                ,SUBSTR('${bizdate}',1,6) AS standing_month
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,MAX(purch_month) AS last_order_month
+                                    FROM    temp_car_model_trd_base
+                                    WHERE   purch_month < SUBSTR('${bizdate}',1,6)
+                                    AND     industry_name NOT IN ('EL')
+                                    GROUP BY venture
+                                             ,buyer_id
+                                ) AS last_order_table
+                    ) AS last_order_table_layer_2
+        ) AS last_order_table_layer_3
+
+)
+
+-- SELECT *
+-- FROM temp_other_industry_car_mapping_table
+-------------------------------------------------------------------------------------
+,temp_never_shopped_el AS (
+SELECT  O.VENTURE
+        ,O.BUYER_id
+        ,O.STANDING_MONTH
+        ,O.last_order_month
+        ,O.BUYER_FLAG AS other_buyer_flag
+        ,S.BUYER_FLAG AS el_buyer_flag
+        ,CASE    WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG
+                 WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG  
+         END AS main_flag
+FROM    temp_other_industry_car_mapping_table O
+LEFT JOIN temp_same_industry_car_mapping_table S
+ON      O.VENTURE = S.VENTURE
+AND     O.BUYER_ID = S.BUYER_ID
+AND     S.STANDING_MONTH = O.STANDING_MONTH
+WHERE   CASE    WHEN S.BUYER_FLAG IS NOT NULL THEN S.BUYER_FLAG 
+                WHEN S.BUYER_FLAG IS NULL THEN O.BUYER_FLAG END IN ('NON-EL-CAR1 Buyer','NON-EL-CAR2 Buyer','NON-EL-CAR0 Buyer')
+
+)
+
+
+SELECT  venture
+        -- ,industry_name
+        -- ,buyer_flag
+        -- ,last_order_month
+        ,standing_month
+        -- ,last_order_fy
+        -- ,standing_month_fy
+        ,other_buyer_flag
+        ,el_buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS buyer_base
+FROM    temp_never_shopped_el
+GROUP BY venture
+        --  ,industry_name
+        --  ,buyer_flag
+        --  ,last_order_month
+         ,standing_month
+        -- ,last_order_fy
+        -- ,standing_month_fy
+        ,other_buyer_flag
+        ,el_buyer_flag
+
+
+
+,temp_total_base_el AS 
+(
+        SELECT  venture
+        ,standing_month
+        ,buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    temp_same_industry_car_mapping_table
+GROUP BY venture
+         ,standing_month
+         ,buyer_flag
+UNION ALL
+SELECT  venture
+        ,standing_month
+        ,other_buyer_flag
+        ,COUNT(DISTINCT buyer_id) AS base_
+FROM    temp_never_shopped_el
+GROUP BY venture
+         ,standing_month
+         ,other_buyer_flag
+)
+ 
+INSERT OVERWRITE TABLE ads_drz_snp_car_modelling_industry_el PARTITION ( ds='${bizdate}',venture )
+
+SELECT  'EL' AS industry
+        ,overall_layer_2.purch_month
+        ,overall_layer_2.return_type
+        ,overall_layer_2.buyers_
+        ,overall_layer_2.GMV_
+        ,overall_layer_2.items_
+        ,overall_layer_2.orders_
+        ,base_
+        ,overall_layer_2.venture
+FROM    (
+            SELECT  venture
+                    ,purch_month
+                    ,return_type
+                    ,COUNT(DISTINCT buyer_id) AS buyers_
+                    ,SUM(gmv_usd) AS GMV_
+                    ,SUM(items_) AS items_
+                    ,SUM(orders_) AS orders_
+            FROM    (
+                        SELECT  trd.venture
+                                ,trd.buyer_id
+                                ,trd.orders_
+                                ,trd.gmv_usd
+                                ,trd.items_
+                                ,trd.purch_month
+                                ,car.last_order_month AS el_last_order
+                                ,car.last_order_fy
+                                ,car.standing_month_fy
+                                ,car.standing_month
+                                ,car.Car_1_Flag
+                                ,car.Car_2_Flag
+                                ,CASE    WHEN car.last_order_month IS NULL AND other_car.last_order_month IS NULL THEN 'NEW-DARAZ-NEW-EL'
+                                         WHEN car.buyer_flag IS NULL THEN other_buyer_flag  
+                                         ELSE car.buyer_flag  
+                                 END AS return_type
+                        ---- trd core ----- current month buyers -----
+                        FROM    (
+                                    SELECT  venture
+                                            ,buyer_id
+                                            ,purch_month
+                                            ,COUNT(DISTINCT order_number) AS orders_
+                                            ,SUM(gmv) AS gmv_usd
+                                            ,COUNT(DISTINCT sales_order_item_id) AS items_
+                                    FROM    temp_car_model_trd_base
+                                    WHERE   purch_month = SUBSTR('${bizdate}',1,6)
+                                    AND     industry_name = 'EL'
+                                    GROUP BY venture
+                                             ,buyer_id
+                                             ,purch_month
+                                ) AS trd
+                        ----- same industry buyers ----
+                        LEFT JOIN temp_same_industry_car_mapping_table car
+                        ON      trd.venture = car.venture
+                        AND     trd.buyer_id = car.buyer_id    
+                        LEFT
+                        JOIN    temp_never_shopped_el other_car
+                        ON      trd.venture = other_car.venture
+                        AND     trd.buyer_id = other_car.buyer_id
+                    ) AS overall
+            GROUP BY venture
+                     ,purch_month
+                     ,return_type
+        ) AS overall_layer_2
+LEFT JOIN temp_total_base_el
+ON      overall_layer_2.venture = temp_total_base_el.venture
+AND     overall_layer_2.purch_month = temp_total_base_el.standing_month
+AND     overall_layer_2.return_type = temp_total_base_el.buyer_flag
+;
+
+-- SELECT * FROM daraz_analyst.ads_drz_snp_car_modelling_industry_el;
+-- SELECT * FROM daraz_analyst_dev.ads_drz_snp_car_modelling_industry_el WHERE ds = '${bizdate}';
