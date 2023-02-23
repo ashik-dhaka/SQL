@@ -1,0 +1,194 @@
+--odps sql 
+--********************************************************************--
+--author:Rajapaksha, Wasana
+--create time:2022-12-06 14:05:43
+--********************************************************************--
+SELECT  trd.*
+        ,assisted_buyers
+        ,organic_buyers
+        ,UV
+        ,PV
+        ,trd.buyers / UV AS cr
+FROM    (
+            SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                    ,SUM(actual_gmv * exchange_rate) AS gmv
+                    ,COUNT(DISTINCT sales_order_item_id) AS items
+                    ,COUNT(DISTINCT sales_order_id) AS orders
+                    ,COUNT(DISTINCT T.buyer_id) AS buyers
+                    ,COUNT(DISTINCT newb.buyer_id) AS New_buyers
+                    ,(
+                                COUNT(DISTINCT T.buyer_id) - COUNT(DISTINCT newb.buyer_id)
+                    ) AS returning_buyers -- ,COUNT(DISTINCT CASE WHEN discount_amount_by_platform >= 0 THEN T.buyer_id END) AS assisted_buyers
+                    -- ,COUNT(DISTINCT CASE WHEN discount_amount_by_platform = 0 THEN T.buyer_id END) AS organic_buyers
+            FROM    daraz_cdm.dwd_drz_trd_core_df_lk T
+            LEFT JOIN   (
+                            SELECT  buyer_id
+                                    ,first_fulfillment_order_number
+                            FROM    daraz_ads.ads_drz_new_buyer_identifier
+                            WHERE   ds = MAX_PT('daraz_ads.ads_drz_new_buyer_identifier')
+                            AND     venture = 'LK'
+                            GROUP BY buyer_id
+                                     ,first_fulfillment_order_number
+                        ) AS newb
+            ON      T.sales_order_id = newb.first_fulfillment_order_number
+            AND     T.buyer_id = newb.buyer_id
+            WHERE   venture = 'LK'
+            AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+            AND     is_fulfilled = 1
+            AND     unit_price > 1
+            AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+            AND     business_area = 'Crossborder'
+            GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+        ) AS trd
+LEFT JOIN   (
+                SELECT  SUBSTR(ds,1,6) AS month
+                        ,COUNT(DISTINCT visitor_id) AS UV
+                        ,COUNT(visitor_id) AS PV
+                FROM    daraz_cdm.dws_drz_log_sku_visitor_1d
+                WHERE   venture = 'LK'
+                AND     SUBSTR(ds,1,6) BETWEEN '${start_month}' AND '${end_month}'
+                AND     business_area = 'Crossborder'
+                GROUP BY SUBSTR(ds,1,6)
+            ) AS P
+ON      trd.month = P.month
+LEFT JOIN   (SELECT month,COUNT(DISTINCT CASE WHEN Flag = 'Assisted' THEN buyer_id ELSE NULL END) AS assisted_buyers
+                        ,COUNT(DISTINCT CASE WHEN Flag = 'organic' THEN buyer_id ELSE NULL END) AS organic_buyers FROM (
+                SELECT  month
+                        ,buyer_id
+                        ,CASE   WHEN disocunt > 0 THEN 'Assisted'
+                                    when disocunt = 0 then 'organic'
+                                            ELSE null 
+                                    END AS Flag
+                FROM    (
+                            SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                                    ,buyer_id
+                                    ,sum(discount_amount_by_platform)+sum(discount_amount_by_seller) AS disocunt
+                            FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+                            WHERE   venture = 'LK'
+                            AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+                            AND     is_fulfilled = 1
+                            AND     unit_price > 1
+                            AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+                            AND     business_area = 'Crossborder'
+                            GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                                     ,buyer_id
+                                     
+                        ) 
+                
+            ) GROUP BY month)AO
+ON      trd.month = AO.month
+;
+
+SELECT  month
+        ,COUNT(DISTINCT buyer_id) as total_buyers
+        ,count(distinct case when assist is null then org_buyer else null end) as organic
+        ,count(distinct case when org_buyer is null then assist else null end) as assisted
+        ,COUNT(DISTINCT buyer_id)-count(distinct case when assist is null then org_buyer else null end) as assisted_2
+FROM    (
+            SELECT  A.*
+                    ,org_buyer
+                    ,assist
+            FROM    (
+                        SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                                ,buyer_id
+                        FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+                        WHERE   venture = 'LK'
+                        AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+                        AND     is_fulfilled = 1
+                        AND     unit_price > 1
+                        AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+                        AND     business_area = 'Crossborder'
+                       
+                        GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                                 ,buyer_id
+                    ) A
+            LEFT JOIN   (select*
+            from(
+                            SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                                    ,buyer_id AS org_buyer
+                                    ,sum( discount_amount_by_seller+discount_amount_by_platform) discount
+                            FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+                            WHERE   venture = 'LK'
+                            AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+                            AND     is_fulfilled = 1
+                            AND     unit_price > 1
+                            AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+                            AND     business_area = 'Crossborder'
+                           -- AND     discount_amount_by_seller = 0
+                           --  OR      discount_amount_by_platform = 0
+                            GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                                     ,buyer_id
+            )
+                     where  discount=0  ) B
+            ON      A.buyer_id = B.org_buyer
+            left join(
+             SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                                ,buyer_id as assist
+                        FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+                        WHERE   venture = 'LK'
+                        AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+                        AND     is_fulfilled = 1
+                        AND     unit_price > 1
+                        AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+                        AND     business_area = 'Crossborder'
+                        AND     (
+                                    discount_amount_by_seller > 0
+                                    OR      discount_amount_by_platform > 0
+                        )
+                        GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                                 ,buyer_id
+) as C
+ON      A.buyer_id = C.assist
+           -- WHERE   org_buyer IS NULL
+        ) 
+GROUP BY month
+
+
+
+SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+,case when  (
+                                    discount_amount_by_seller > 0
+                                    OR      discount_amount_by_platform > 0
+                        ) then 'Assisted'
+
+
+
+            when 
+                                ,buyer_id
+                        FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+                        WHERE   venture = 'LK'
+                        AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+                        AND     is_fulfilled = 1
+                        AND     unit_price > 1
+                        AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+                        AND     business_area = 'Crossborder'
+                       
+                        GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                                 ,buyer_id;
+
+
+ SELECT month,COUNT(DISTINCT CASE WHEN Flag = 'Assisted' THEN buyer_id ELSE NULL END) AS assisted_buyers
+        ,COUNT(DISTINCT CASE WHEN Flag = 'Organic' THEN buyer_id ELSE NULL END) AS organic_buyers
+         from(
+            SELECT  TO_CHAR(fulfillment_create_date,'yyyymm') AS month
+                    ,buyer_id
+                    ,CASE    WHEN discount_amount_by_platform > 0 THEN 'Assisted'
+                                        WHEN discount_amount_by_platform = 0 THEN 'Organic' 
+                                        ELSE NULL 
+                                END AS Flag
+            FROM    daraz_cdm.dwd_drz_trd_core_df_lk
+            WHERE   venture = 'LK'
+            AND     ds = TO_CHAR(DATEADD(GETDATE(),-1,'dd'),'yyyymmdd')
+            AND     is_fulfilled = 1
+            AND     unit_price > 1
+            AND     TO_CHAR(fulfillment_create_date,'yyyymm') BETWEEN '${start_month}' AND '${end_month}'
+            AND     business_area = 'Crossborder'
+            GROUP BY TO_CHAR(fulfillment_create_date,'yyyymm')
+                        ,buyer_id,CASE    WHEN discount_amount_by_platform > 0 THEN 'Assisted'
+                                        WHEN discount_amount_by_platform= 0 THEN 'Organic' 
+                                        ELSE NULL 
+                                END
+                        
+        
+
+) GROUP BY month
